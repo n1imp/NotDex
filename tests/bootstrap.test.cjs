@@ -96,8 +96,8 @@ function unixFixture(valid) {
   fs.writeFileSync(path.join(bin, 'curl'), '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do\ncase "$1" in https://nodejs.org/dist/v24.22.2/*) ;; https:*) exit 9 ;; esac\nif [ "$1" = -o ]; then cp "$NOTDEX_ARCHIVE" "$2"; exit; fi\nshift\ndone\nexit 1\n', { mode: 0o755 });
   const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH,
     NOTDEX_ARCHIVE: archive, NOTDEX_CACHE_HOME: path.join(root, 'cache') };
-  const invoke = offline => spawnSync('/bin/sh', ['-c', 'set -eu; . "$1/scripts/bootstrap.sh"; notdex_bootstrap "$1" "$2" "$3"; printf "%s\\n" "$NOTDEX_NODE"',
-    'bootstrap', root, path.join(root, 'profile'), String(offline)], { env, encoding: 'utf8' });
+  const invoke = (offline, options = {}) => spawnSync('/bin/sh', ['-c', 'set -eu; . "$1/scripts/bootstrap.sh"; notdex_bootstrap "$1" "$2" "$3"; printf "%s\\n" "$NOTDEX_NODE"',
+    'bootstrap', root, path.join(root, 'profile'), String(offline)], { env, encoding: 'utf8', ...options });
   return { root, env, invoke, name, scripts };
 }
 
@@ -147,12 +147,15 @@ for (const route of ['cache', 'installed-path']) {
   });
 }
 
-for (const route of ['base', 'runtime', 'ancestor', 'writable-base', 'target-directory']) {
+for (const route of ['base', 'base-trailing-slash', 'runtime', 'ancestor', 'writable-base', 'target-directory']) {
   test(`Unix rejects an unsafe cache ${route} before executing its runtime`, { skip: process.platform === 'win32' }, () => {
     const { root, env, invoke, name } = unixFixture(true);
     const backing = path.join(root, 'backing');
     fs.mkdirSync(backing);
-    if (route === 'base') fs.symlinkSync(backing, env.NOTDEX_CACHE_HOME);
+    if (route === 'base' || route === 'base-trailing-slash') {
+      fs.symlinkSync(backing, env.NOTDEX_CACHE_HOME);
+      if (route === 'base-trailing-slash') env.NOTDEX_CACHE_HOME += path.sep;
+    }
     else if (route === 'runtime') {
       fs.mkdirSync(env.NOTDEX_CACHE_HOME);
       fs.symlinkSync(backing, path.join(env.NOTDEX_CACHE_HOME, 'runtime'));
@@ -171,6 +174,21 @@ for (const route of ['base', 'runtime', 'ancestor', 'writable-base', 'target-dir
     assert.match(result.stderr, /cache.*(link|permission|owner|private|unsafe)/i);
   });
 }
+
+test('Unix validates parents above a relative cache path', { skip: process.platform === 'win32' }, () => {
+  const { root, env, invoke, name } = unixFixture(true);
+  const unsafe = path.join(root, 'unsafe');
+  const cwd = path.join(unsafe, 'cwd');
+  fs.mkdirSync(cwd, { recursive: true });
+  fs.chmodSync(unsafe, 0o777);
+  env.NOTDEX_CACHE_HOME = 'cache';
+  const cache = path.join(cwd, 'cache/runtime');
+  fs.mkdirSync(cache, { recursive: true });
+  fs.copyFileSync(path.join(root, name, 'bin/node'), path.join(cache, name));
+  const result = invoke(true, { cwd });
+  assert.notEqual(result.status, 0, 'relative cache bypassed its writable parent');
+  assert.match(result.stderr, /cache.*(permission|unsafe)/i);
+});
 
 test('Unix verifies the extracted binary against its independent pinned hash', { skip: process.platform === 'win32' }, () => {
   const { env, invoke, name, scripts } = unixFixture(true);

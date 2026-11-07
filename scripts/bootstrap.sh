@@ -67,6 +67,8 @@ notdex_bootstrap() {
         Linux) notdex_os=linux; notdex_cache_base=${NOTDEX_CACHE_HOME:-${XDG_CACHE_HOME:-${HOME}/.cache}/notdex} ;;
         *) printf '%s\n' 'NotDex: use Install.cmd on Windows.' >&2; return 1 ;;
     esac
+    case "$notdex_cache_base" in /*) ;; *) notdex_cache_base=$(pwd -P)/$notdex_cache_base ;; esac
+    while [ "$notdex_cache_base" != / ] && [ "${notdex_cache_base%/}" != "$notdex_cache_base" ]; do notdex_cache_base=${notdex_cache_base%/}; done
     case $(uname -m) in
         x86_64|amd64) notdex_arch=x64 ;;
         aarch64|arm64) notdex_arch=arm64 ;;
