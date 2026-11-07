@@ -1,4 +1,6 @@
 $ErrorActionPreference = 'Stop'
+$ProgressPreference = 'SilentlyContinue'
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility') -ErrorAction Stop
 $ScriptPath = Join-Path (Split-Path -Parent $PSScriptRoot) 'src\notificar.ps1'
 $TestRoot = Join-Path ([IO.Path]::GetTempPath()) ('codex-notificar-test-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($TestRoot)
