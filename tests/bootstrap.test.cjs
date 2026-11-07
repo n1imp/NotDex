@@ -18,6 +18,8 @@ test('pinned release has valid checksums for supported runtime assets', () => {
     assert.ok(asset.startsWith('win-') || asset.startsWith('node-v' + version + '-'));
   }
   assert.equal(new Set(lines.map(line => line.split(/\s+/)[1])).size, lines.length);
+  const assets = new Set(lines.map(line => line.split(/\s+/)[1]));
+  for (const asset of assets) if (asset.endsWith('.tar.gz')) assert(assets.has(asset.slice(0, -7) + '/bin/node'));
 });
 
 function windowsFixture(valid) {
@@ -89,14 +91,14 @@ function unixFixture(valid) {
   const archive = path.join(root, 'fixture.tar.gz');
   const tar = spawnSync('tar', ['-czf', archive, '-C', root, name]);
   assert.equal(tar.status, 0);
-  fs.writeFileSync(path.join(scripts, 'node-shasums.txt'), (valid ? hash(fs.readFileSync(archive)) : '0'.repeat(64)) + '  ' + name + '.tar.gz\n');
+  fs.writeFileSync(path.join(scripts, 'node-shasums.txt'), (valid ? hash(fs.readFileSync(archive)) : '0'.repeat(64)) + '  ' + name + '.tar.gz\n' + hash(fs.readFileSync(path.join(packageRoot, 'node'))) + '  ' + name + '/bin/node\n');
   fs.writeFileSync(path.join(bin, 'node'), '#!/bin/sh\nprintf "v20.0.0\\n"\n', { mode: 0o755 });
   fs.writeFileSync(path.join(bin, 'curl'), '#!/bin/sh\nwhile [ "$#" -gt 0 ]; do\ncase "$1" in https://nodejs.org/dist/v24.22.2/*) ;; https:*) exit 9 ;; esac\nif [ "$1" = -o ]; then cp "$NOTDEX_ARCHIVE" "$2"; exit; fi\nshift\ndone\nexit 1\n', { mode: 0o755 });
   const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH,
     NOTDEX_ARCHIVE: archive, NOTDEX_CACHE_HOME: path.join(root, 'cache') };
   const invoke = offline => spawnSync('/bin/sh', ['-c', 'set -eu; . "$1/scripts/bootstrap.sh"; notdex_bootstrap "$1" "$2" "$3"; printf "%s\\n" "$NOTDEX_NODE"',
     'bootstrap', root, path.join(root, 'profile'), String(offline)], { env, encoding: 'utf8' });
-  return { root, env, invoke, name };
+  return { root, env, invoke, name, scripts };
 }
 
 test('Unix private runtime works in paths with spaces and is reusable offline', { skip: process.platform === 'win32' }, () => {
@@ -124,4 +126,58 @@ test('Unix repairs an incompatible cached runtime using the pinned release URL',
   const result = invoke(false);
   assert.equal(result.status, 0, result.stderr);
   assert.equal(invoke(true).status, 0);
+});
+
+for (const route of ['cache', 'installed-path']) {
+  test(`Unix rejects a tampered runtime before execution through ${route}`, { skip: process.platform === 'win32' }, () => {
+    const { root, env, invoke, name } = unixFixture(true);
+    const cache = path.join(env.NOTDEX_CACHE_HOME, 'runtime');
+    fs.mkdirSync(cache, { recursive: true });
+    const binary = path.join(cache, name);
+    const marker = path.join(root, 'executed');
+    fs.writeFileSync(binary, '#!/bin/sh\ntouch "$NOTDEX_ATTACK_MARKER"\nprintf "v24.22.2\\n"\n', { mode: 0o755 });
+    env.NOTDEX_ATTACK_MARKER = marker;
+    if (route === 'installed-path') {
+      fs.mkdirSync(path.join(root, 'profile/notdex'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'profile/notdex/node-path.txt'), binary + '\n');
+    }
+    const result = invoke(true);
+    assert.equal(fs.existsSync(marker), false, 'tampered executable ran before validation');
+    assert.notEqual(result.status, 0);
+  });
+}
+
+for (const route of ['base', 'runtime', 'ancestor', 'writable-base', 'target-directory']) {
+  test(`Unix rejects an unsafe cache ${route} before executing its runtime`, { skip: process.platform === 'win32' }, () => {
+    const { root, env, invoke, name } = unixFixture(true);
+    const backing = path.join(root, 'backing');
+    fs.mkdirSync(backing);
+    if (route === 'base') fs.symlinkSync(backing, env.NOTDEX_CACHE_HOME);
+    else if (route === 'runtime') {
+      fs.mkdirSync(env.NOTDEX_CACHE_HOME);
+      fs.symlinkSync(backing, path.join(env.NOTDEX_CACHE_HOME, 'runtime'));
+    } else if (route === 'ancestor') {
+      fs.symlinkSync(backing, path.join(root, 'alias'));
+      env.NOTDEX_CACHE_HOME = path.join(root, 'alias/cache');
+    }
+    const cache = path.join(env.NOTDEX_CACHE_HOME, 'runtime');
+    fs.mkdirSync(cache, { recursive: true });
+    if (route === 'writable-base') fs.chmodSync(env.NOTDEX_CACHE_HOME, 0o777);
+    const binary = path.join(cache, name);
+    if (route === 'target-directory') fs.mkdirSync(binary);
+    else fs.copyFileSync(path.join(root, name, 'bin/node'), binary);
+    const result = invoke(true);
+    assert.notEqual(result.status, 0, 'unsafe cache was accepted');
+    assert.match(result.stderr, /cache.*(link|permission|owner|private|unsafe)/i);
+  });
+}
+
+test('Unix verifies the extracted binary against its independent pinned hash', { skip: process.platform === 'win32' }, () => {
+  const { env, invoke, name, scripts } = unixFixture(true);
+  const file = path.join(scripts, 'node-shasums.txt');
+  fs.writeFileSync(file, fs.readFileSync(file, 'utf8').replace(/^[a-f0-9]{64}(?=  .*\/bin\/node$)/m, '0'.repeat(64)));
+  const result = invoke(false);
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /SHA-256/);
+  assert.equal(fs.existsSync(path.join(env.NOTDEX_CACHE_HOME, 'runtime', name)), false);
 });

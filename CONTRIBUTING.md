@@ -75,3 +75,5 @@ Substitua a versão do exemplo pela versão escolhida. Não mova nem reutilize t
 O [workflow de release](.github/workflows/release.yml) repete os testes nos três sistemas. Só depois publica `NotDex.zip` e `SHA256SUMS.txt`. Tags com hífen geram prévias; tags como `v0.2.0` geram releases regulares. Apenas pessoas com permissão para enviar tags ao repositório original podem disparar essa publicação.
 
 O ZIP inclui instaladores, runtime, README e LICENSE. Testes, modelos do GitHub e este guia ficam fora da distribuição de instalação. O Node privado é obtido diretamente de nodejs.org e não é empacotado no ZIP.
+
+Ao atualizar a versão do Node, atualize `scripts/node-version.txt` e `scripts/node-shasums.txt`. Para cada plataforma Unix, registre o SHA-256 do arquivo `.tar.gz` e do executável `bin/node`. Confira primeiro o arquivo contra os checksums oficiais de nodejs.org; só então extraia e calcule o hash do executável, sem executá-lo. Valide os testes de bootstrap nos três sistemas.

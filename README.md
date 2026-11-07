@@ -9,7 +9,7 @@ Ao concluir um turno, o NotDex copia a resposta final e mostra o título da sess
 ## Instalar em poucos passos
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.166.0+** instalado e disponível no PATH.
-2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.3/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.4/NotDex.zip) e **extraia toda a pasta**.
 3. Abra o instalador do seu sistema:
 
 | Sistema | Instalador |
@@ -26,7 +26,7 @@ Se um atalho baixado for bloqueado, revise a origem e use o comando equivalente 
 
 ```powershell
 # Windows
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+& "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 ```sh
@@ -43,6 +43,8 @@ sh install.sh
 - **Atualizar um clone:** rode `git pull --ff-only` e execute o instalador novamente. Somente atualizar os arquivos do clone não atualiza a cópia instalada no Codex.
 
 Outros hooks e configurações são preservados. O runtime fica em `CODEX_HOME/notdex`, por padrão `~/.codex/notdex`. O cache privado do Node e pacotes Linux compartilhados permanecem após desinstalar.
+
+Ao atualizar de uma versão anterior à Preview 4, reinicie o Codex e revise/aprove novamente o NotDex em **/hooks**: o comando Windows agora usa o caminho absoluto do PowerShell do sistema.
 
 ## Requisitos e limites conhecidos
 
@@ -66,7 +68,7 @@ O NotDex lê o índice, o banco local em modo somente leitura e o transcript inf
 `CODEX_HOME` seleciona outro perfil. Também é possível informar o destino explicitamente:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -CodexHome 'D:\Codex Home'
+& "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -CodexHome 'D:\Codex Home'
 ```
 
 ```sh
@@ -76,6 +78,8 @@ sh install.sh --codex-home '/caminho/Codex Home'
 Use o mesmo destino ao iniciar o Codex e ao desinstalar. `-NoDownload` no Windows e `--no-download --no-system-packages` no Unix impedem downloads e instalação de pacotes. `-NodePath` seleciona um Node existente no Windows. Quem já tem Node 24+ pode executar `node install.cjs`.
 
 O cache privado fica em `%LOCALAPPDATA%/NotDex/runtime` no Windows, `~/Library/Caches/NotDex/runtime` no macOS e `${XDG_CACHE_HOME:-~/.cache}/notdex/runtime` no Linux. `NOTDEX_CACHE_HOME` permite outro destino.
+
+No macOS/Linux, o cache precisa pertencer ao usuário e não pode ser gravável por outros usuários nem usar links em seus diretórios privados. O executável é conferido por SHA-256 fixado antes da reutilização, inclusive offline. Um cache alterado é rejeitado ou substituído por um download verificado. O Node já disponível no PATH é considerado um interpretador escolhido pelo usuário; coloque-o novamente no PATH se ele tiver saído de lá desde a instalação.
 
 ## Desenvolvimento
 

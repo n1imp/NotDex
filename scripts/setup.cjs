@@ -55,10 +55,13 @@ function ownership(previous, command) {
   return [...new Set([command, previous?.hook_command, ...(previous?.owned_commands || [])].filter(Boolean))];
 }
 function quoteShell(value) { return "'" + value.replace(/'/g, "'\"'\"'") + "'"; }
+function systemPowerShell() {
+  return path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32/WindowsPowerShell/v1.0/powershell.exe');
+}
 function makeHookCommand(platform, directory, nodePath = process.execPath) {
   if (platform === 'win32') {
     const invocation = "& '" + path.join(directory, 'notificar.ps1').replace(/'/g, "''") + "'";
-    return 'powershell.exe -NoProfile -NonInteractive -Sta -ExecutionPolicy Bypass -EncodedCommand ' + Buffer.from(invocation, 'utf16le').toString('base64');
+    return '"' + systemPowerShell() + '" -NoProfile -NonInteractive -Sta -ExecutionPolicy Bypass -EncodedCommand ' + Buffer.from(invocation, 'utf16le').toString('base64');
   }
   return quoteShell(nodePath) + ' --no-warnings ' + quoteShell(path.join(directory, 'notificar-unix.cjs'));
 }
@@ -91,7 +94,7 @@ function prerequisites(options) {
   const codex = find('codex');
   if (!codex) throw new Error('Install Codex CLI 0.166.0+ and add it to PATH first.');
   const result = platform === 'win32' && /\.(cmd|bat)$/i.test(codex)
-    ? run(find('powershell.exe'), ['-NoProfile', '-NonInteractive', '-Command', '& $env:NOTDEX_CODEX_EXECUTABLE --version; exit $LASTEXITCODE'],
+    ? run(systemPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', '& $env:NOTDEX_CODEX_EXECUTABLE --version; exit $LASTEXITCODE'],
       { env: { ...env, NOTDEX_CODEX_EXECUTABLE: codex }, encoding: 'utf8', timeout: 15000, windowsHide: true })
     : run(codex, ['--version'], { env, encoding: 'utf8', timeout: 15000, windowsHide: true });
   const version = result.stdout?.match(/codex-cli (\d+)\.(\d+)\.(\d+)/);
