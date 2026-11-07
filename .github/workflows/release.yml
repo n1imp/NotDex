@@ -1,0 +1,42 @@
+name: Publish release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
+  publish:
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Package installation files with license
+        run: |
+          git archive --format=zip --prefix=NotDex/ --output=NotDex.zip HEAD
+          unzip -p NotDex.zip NotDex/LICENSE | cmp LICENSE -
+          if unzip -Z1 NotDex.zip | grep -Eq '^NotDex/(tests/|\.github/|CONTRIBUTING\.md|test\.)'; then
+            echo 'Installation package contains development files.' >&2
+            exit 1
+          fi
+          sha256sum NotDex.zip > SHA256SUMS.txt
+      - name: Publish versioned download
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          flags=()
+          if [[ "$RELEASE_TAG" == *-* ]]; then flags+=(--prerelease); fi
+          gh release create "$RELEASE_TAG" NotDex.zip SHA256SUMS.txt \
+            --verify-tag --generate-notes --title "NotDex $RELEASE_TAG" \
+            --notes "Extraia NotDex.zip e siga o README. Requisitos e limites: https://github.com/$GH_REPO/blob/$RELEASE_TAG/README.md" \
+            "${flags[@]}"

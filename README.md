@@ -9,7 +9,7 @@ Ao concluir um turno, o NotDex copia a resposta final e mostra o título da sess
 ## Instalar em poucos passos
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.166.0+** instalado e disponível no PATH.
-2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.2/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.3/NotDex.zip) e **extraia toda a pasta**.
 3. Abra o instalador do seu sistema:
 
 | Sistema | Instalador |
@@ -39,7 +39,8 @@ sh install.sh
 - **Windows:** abra [Uninstall.cmd](Uninstall.cmd).
 - **macOS:** abra [uninstall.command](uninstall.command).
 - **macOS/Linux:** também pode executar `sh uninstall.sh` na pasta extraída.
-- **Atualizar:** extraia uma versão nova e execute seu instalador novamente. O hook gerenciado não é duplicado.
+- **Atualizar pelo ZIP:** baixe a [versão mais recente](https://github.com/n1imp/NotDex/releases), extraia em uma pasta nova e execute seu instalador novamente. O hook gerenciado não é duplicado.
+- **Atualizar um clone:** rode `git pull --ff-only` e execute o instalador novamente. Somente atualizar os arquivos do clone não atualiza a cópia instalada no Codex.
 
 Outros hooks e configurações são preservados. O runtime fica em `CODEX_HOME/notdex`, por padrão `~/.codex/notdex`. O cache privado do Node e pacotes Linux compartilhados permanecem após desinstalar.
 
@@ -80,6 +81,12 @@ O cache privado fica em `%LOCALAPPDATA%/NotDex/runtime` no Windows, `~/Library/C
 
 O repositório inclui testes sintéticos e [CI em Windows/macOS/Linux](https://github.com/n1imp/NotDex/actions). Execute `node --no-warnings test.cjs` com Node 24+. O ZIP de instalação exclui testes, CI e documentos internos. Testes automatizados não comprovam permissão, aparência ou som em cada desktop.
 
+## Contribuir
+
+Sugestões e correções são bem-vindas por [issues](https://github.com/n1imp/NotDex/issues) e pull requests. Faça um fork, trabalhe em uma branch e siga o [guia de contribuição](https://github.com/n1imp/NotDex/blob/main/CONTRIBUTING.md). O CI valida pull requests nos três sistemas.
+
+Mantenedores publicam atualizações enviando uma nova tag de versão: o workflow testa os três sistemas e gera o ZIP com licença e SHA-256 automaticamente.
+
 ## Licença
 
-Nenhuma licença de redistribuição foi definida nesta prévia.
+[MIT](LICENSE). Permite uso, modificação e redistribuição, preservando o aviso de direitos autorais e a licença. Contribuições devem manter licenças compatíveis.
