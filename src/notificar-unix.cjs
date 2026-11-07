@@ -4,6 +4,7 @@ const { spawn: spawnProcess } = require('node:child_process');
 const { copyText } = require('./desktop.cjs');
 
 function extractInput(raw) {
+  raw = raw.replace(/^\uFEFF+/, '');
   let text = '';
   let data = {};
   if (/^\s*[\[{]/.test(raw)) {

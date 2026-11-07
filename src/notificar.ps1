@@ -4,7 +4,7 @@ try {
     $ObservedAt = [DateTimeOffset]::UtcNow.ToString('o')
     # O hook entrega JSON UTF-8 diretamente ao stdin desta instancia.
     [Console]::InputEncoding = [Text.UTF8Encoding]::new($false)
-    $RawInput = [Console]::In.ReadToEnd()
+    $RawInput = [Console]::In.ReadToEnd().TrimStart([char]0xFEFF)
     $ContentText = ''
 
     if (-not [string]::IsNullOrWhiteSpace($RawInput)) {

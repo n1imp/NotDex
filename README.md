@@ -9,7 +9,7 @@ Ao concluir um turno, o NotDex copia a resposta final e mostra o título da sess
 ## Instalar em poucos passos
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.166.0+** instalado e disponível no PATH.
-2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.1/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.2/NotDex.zip) e **extraia toda a pasta**.
 3. Abra o instalador do seu sistema:
 
 | Sistema | Instalador |

@@ -76,6 +76,8 @@ function Invoke-NotificationCase {
 $Cases = @(
     @{ Name = 'final answer wins'; Input = '{"last_assistant_message":"Final answer","content":"Other","session_id":"secret"}'; Want = 'Final answer' },
     @{ Name = 'content string'; Input = '{"content":"Useful content","cwd":"C:\\private"}'; Want = 'Useful content' },
+    @{ Name = 'UTF-8 BOM before JSON'; Input = ([string][char]0xFEFF + '{"last_assistant_message":"Final answer","session_id":"private"}'); Want = 'Final answer' },
+    @{ Name = 'UTF-8 BOM metadata never copied'; Input = ([string][char]0xFEFF + '{"session_id":"private"}'); Want = $null },
     @{ Name = 'output string'; Input = '{"output":"Useful output"}'; Want = 'Useful output' },
     @{ Name = 'plain text'; Input = "  Plain answer`nsecond line  "; Want = "Plain answer`nsecond line" },
     @{ Name = 'metadata never copied'; Input = '{"session_id":"secret","transcript_path":"C:\\private\\log.jsonl"}'; Want = $null },

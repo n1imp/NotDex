@@ -18,6 +18,13 @@ test('hook extracts only nonempty response strings and preserves literal backsla
   }
 });
 
+test('UTF-8 BOM does not hide JSON responses or expose metadata', () => {
+  const result = extractInput('\uFEFF' + JSON.stringify({ last_assistant_message: 'Final answer', session_id: 's' }));
+  assert.equal(result.text, 'Final answer');
+  assert.equal(result.data.session_id, 's');
+  assert.equal(extractInput('\uFEFF' + JSON.stringify({ session_id: 'private' })).text, '');
+});
+
 test('worker is detached with metadata only, even when clipboard fails', () => {
   let captured;
   let unref = false;
