@@ -13,9 +13,11 @@ test('executable lookup respects platform PATH delimiter and Windows extensions'
   fs.writeFileSync(path.join(bin, 'node.cmd'), '');
   fs.writeFileSync(path.join(bin, 'copy'), '', { mode: 0o755 });
   assert.equal(findExecutable('node', { Path: `${root};${bin}`, PATHEXT: '.EXE;.CMD' }, 'win32'), path.join(bin, 'node.cmd'));
-  assert.equal(findExecutable('copy', { PATH: bin }, 'linux'), path.join(bin, 'copy'));
-  assert.equal(findExecutable('missing', { PATH: bin }, 'linux'), null);
-  assert.equal(findExecutable('bin', { PATH: root }, 'linux'), null);
+  if (process.platform !== 'win32') {
+    assert.equal(findExecutable('copy', { PATH: bin }, 'linux'), path.join(bin, 'copy'));
+    assert.equal(findExecutable('missing', { PATH: bin }, 'linux'), null);
+    assert.equal(findExecutable('bin', { PATH: root }, 'linux'), null);
+  }
 });
 
 test('clipboard sends literal response only through stdin with a bounded child', () => {

@@ -139,9 +139,10 @@ for (const recovery of ['retry', 'uninstall']) {
     fs.writeFileSync(hooksFile, JSON.stringify({ hooks: { Stop: [{ hooks: [
       { type: 'command', command: 'legacy-hook', statusMessage: 'NotDex' }, { type: 'command', command: 'keep' }
     ] }] } }));
+    const canonicalHooksFile = fs.realpathSync(hooksFile);
     const rename = fs.renameSync;
     fs.renameSync = (source, target) => {
-      if (target === hooksFile) throw Object.assign(new Error('fixture write failure'), { code: 'EACCES' });
+      if (target === canonicalHooksFile) throw Object.assign(new Error('fixture write failure'), { code: 'EACCES' });
       return rename(source, target);
     };
     try { assert.throws(() => install(options), /fixture write failure/); }

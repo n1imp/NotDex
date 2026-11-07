@@ -32,6 +32,7 @@ function windowsFixture(valid) {
   fs.writeFileSync(harness, `
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility') -ErrorAction Stop
 . $env:NOTDEX_BOOTSTRAP_FILE
 function Get-Command { param($Name,$ErrorAction) return $null }
 function Invoke-WebRequest {
