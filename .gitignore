@@ -1,0 +1,26 @@
+# Local Codex data and credentials must never enter this repository.
+.codex/
+sessions/
+archived_sessions/
+auth.json
+hooks.json
+config.toml
+session_index.jsonl
+*.jsonl
+*.sqlite
+*.sqlite-*
+*.db
+*.db-*
+.env
+.env.*
+node-path.txt
+node_modules/
+coverage/
+*.log
+*.tmp
+*.bak
+.DS_Store
+.idea/
+.vscode/
+docs/
+dist/
