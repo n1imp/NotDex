@@ -64,6 +64,9 @@ try {
 
         # Run the installed launcher, replacing only clipboard and GUI side effects.
         $Harness = @'
+$ProgressPreference = 'SilentlyContinue'
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Management') -ErrorAction Stop
 [Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
 function Set-Clipboard { param($Value) [Console]::Out.WriteLine('CLIP:' + $Value) }
 function Start-Process {
@@ -91,7 +94,7 @@ function Start-Process {
         Assert-True ($Process.WaitForExit(15000)) 'Installed launcher timed out'
         $Lines=$Process.StandardOutput.ReadToEnd() -split '\r?\n'
         Assert-True ($Process.ExitCode -eq 0) 'Installed hook did not exit zero'
-        Assert-True ($Lines[0] -ceq 'CLIP:Portable answer') 'Installed hook did not copy final text'
+        Assert-True ($Lines[0] -ceq 'CLIP:Portable answer') ('Installed hook did not copy final text; fixture output: ' + ($Lines -join ' | ') + '; stderr: ' + $Process.StandardError.ReadToEnd())
         $Data=$Lines[1] | ConvertFrom-Json
         Assert-True ($Data.codex_root -ceq $Directory) 'Runtime used the source repository as CODEX_HOME'
         Assert-True ([IO.File]::Exists($Data.helper_path)) 'Installed metrics helper was not found'

@@ -7,8 +7,10 @@ $Failures = 0
 # Exercise the actual script in a child: Exit(0) must not terminate the test runner.
 # Replace only the OS side effects; capture the clipboard text and child command.
 $Harness = @'
-$ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility') -ErrorAction Stop
+Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Management') -ErrorAction Stop
+$ErrorActionPreference = 'Stop'
 $global:Started = [Diagnostics.Stopwatch]::StartNew()
 function Set-Clipboard {
     param($Value)
