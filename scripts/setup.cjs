@@ -64,7 +64,8 @@ function makeHookCommand(platform, directory, nodePath = process.execPath) {
     const invocation = "require(Buffer.from('" + entry + "','base64').toString('utf8')).main()";
     const cmd = path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32/cmd.exe');
     // --% preserves CMD quoting when Codex provides a PowerShell session shell.
-    return cmd + ' --% /d /s /c ""' + nodePath + '" --no-warnings -e "' + invocation + '""';
+    const executable = nodePath.replace(/%/g, '"^%"');
+    return cmd + ' --% /d /v:off /s /c @"' + executable + '" --no-warnings -e "' + invocation + '"';
   }
   return quoteShell(nodePath) + ' --no-warnings ' + quoteShell(path.join(directory, 'notificar-unix.cjs'));
 }

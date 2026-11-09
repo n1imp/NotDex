@@ -8,7 +8,7 @@ const { makeHookCommand } = require('../scripts/setup.cjs');
 
 test('Windows hook records an absolute system CMD path and encoded entry path', () => {
   const command = makeHookCommand('win32', 'C:\\Codex Home\\notdex');
-  assert.match(command, /^[A-Z]:\\.*\\System32\\cmd\.exe --% \/d \/s \/c /i);
+  assert.match(command, /^[A-Z]:\\.*\\System32\\cmd\.exe --% \/d \/v:off \/s \/c /i);
   assert(!command.includes('Codex Home'));
   assert(command.includes('.main()'));
 });
@@ -52,6 +52,24 @@ Add-Type -TypeDefinition 'public class AuditMarker { public static void Main(str
       env: { ...process.env, NOTDEX_TRUSTED_MARKER: marker }
     });
     assert.equal(result.status, 0, result.stderr);
+    assert.equal(fs.readFileSync(marker, 'utf8'), 'trusted');
+  });
+  const nodeDirectory = path.join(root, '%% %NOTDEX_PATH_SEGMENT% & !literal! ^ caret');
+  fs.mkdirSync(nodeDirectory);
+  const nodePath = path.join(nodeDirectory, 'node.exe');
+  fs.copyFileSync(process.execPath, nodePath);
+  for (const shell of ['cmd', 'powershell']) await t.test('literal Node path through ' + shell, () => {
+    const marker = path.join(root, shell + '-literal-path.trusted');
+    const command = makeHookCommand('win32', runtime, nodePath);
+    const args = shell === 'cmd' ? ['/d', '/s', '/c', '"' + command + '"'] : ['-NoProfile', '-NonInteractive', '-Command', command];
+    const result = spawnSync(shell === 'cmd' ? path.join(process.env.SystemRoot, 'System32/cmd.exe') : powershell, args, {
+      cwd: root, input: '{}', encoding: 'utf8', windowsHide: true, timeout: 15000,
+      windowsVerbatimArguments: shell === 'cmd',
+      env: { ...process.env, NOTDEX_PATH_SEGMENT: 'EXPANDED', PNOTDEX_PATH_SEGMENT: 'COLLISION', literal: 'WRONG', NOTDEX_TRUSTED_MARKER: marker }
+    });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr, '');
     assert.equal(fs.readFileSync(marker, 'utf8'), 'trusted');
   });
 });
