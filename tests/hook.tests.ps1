@@ -113,17 +113,15 @@ try {
     $Text = 'Ajustei ''aspas'' " & < > ` $() ' + [char]0x0001 + [char]::ConvertFromUtf32(0x1F680) + '. Detalhes que nao devem aparecer.'
     $Payload = @{ last_assistant_message = $Text } | ConvertTo-Json -Compress
     $Result = Invoke-NotificationCase $Payload
-    if ($Result.Command -notmatch '-EncodedCommand\s+(\S+)') { throw 'Worker does not use EncodedCommand' }
-    $Worker = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Matches[1]))
+    if ($Result.Command -notmatch '-WorkerData\s+(\S+)') { throw 'Worker metadata is not encoded' }
+    $Data = ConvertFrom-Json -InputObject ([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Matches[1])))
     $Tokens = $null
     $ParseErrors = $null
-    $Ast = [Management.Automation.Language.Parser]::ParseInput($Worker, [ref]$Tokens, [ref]$ParseErrors)
+    $Ast = [Management.Automation.Language.Parser]::ParseFile($ScriptPath, [ref]$Tokens, [ref]$ParseErrors)
     if ($ParseErrors.Count) { throw 'Worker has syntax errors' }
     $Formatter = $Ast.Find({ param($Node) $Node -is [Management.Automation.Language.FunctionDefinitionAst] -and $Node.Name -eq 'Get-NotificationXml' }, $true)
     if (-not $Formatter) { throw 'Worker has no testable notification formatter' }
     Invoke-Expression $Formatter.Extent.Text
-    $DataAssignment = $Ast.Find({ param($Node) $Node -is [Management.Automation.Language.AssignmentStatementAst] -and $Node.Left.Extent.Text -eq '$Data' }, $true)
-    Invoke-Expression $DataAssignment.Extent.Text
     if ($Data.PSObject.Properties.Name -contains 'text') { throw 'Assistant response is still passed to the notification worker' }
     $Xml = [xml](Get-NotificationXml $Data)
     if ($Xml.OuterXml -match 'Ajustei|Detalhes que nao') { throw 'Toast contains assistant response content' }

@@ -56,32 +56,32 @@ try {
         Assert-True ([IO.File]::ReadAllText($ConfigPath) -ceq $ConfigText) 'config.toml was modified'
         $InstallRoot = Join-Path $Directory 'notdex'
         Assert-True ([IO.File]::ReadAllText((Join-Path $InstallRoot 'node-path.txt')).Trim() -ceq $NodePath) 'Node path was not recorded'
-        Assert-True ($Managed[0].command -match '-EncodedCommand ([A-Za-z0-9+/=]+)$') 'Launcher is not safely encoded'
-        $Launcher = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($Matches[1]))
+        $Launcher = $Managed[0].command
+        Assert-True ($Launcher.StartsWith((Join-Path $env:SystemRoot 'System32\cmd.exe') + ' --% ')) 'Launcher does not use trusted CMD'
         $Tokens=$null; $Errors=$null
         [void][Management.Automation.Language.Parser]::ParseInput($Launcher,[ref]$Tokens,[ref]$Errors)
         Assert-True ($Errors.Count -eq 0) 'Special characters broke the launcher'
 
         # Run the installed launcher, replacing only clipboard and GUI side effects.
-        $Harness = @'
-$ProgressPreference = 'SilentlyContinue'
-Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Utility') -ErrorAction Stop
-Import-Module (Join-Path $PSHOME 'Modules/Microsoft.PowerShell.Management') -ErrorAction Stop
-[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)
-function Set-Clipboard { param($Value) [Console]::Out.WriteLine('CLIP:' + $Value) }
-function Start-Process {
-    param($FilePath,$ArgumentList,$WindowStyle,$ErrorAction)
-    $Worker=[Text.Encoding]::Unicode.GetString([Convert]::FromBase64String($ArgumentList[-1]))
-    $Tokens=$null; $Errors=$null
-    $Ast=[Management.Automation.Language.Parser]::ParseInput($Worker,[ref]$Tokens,[ref]$Errors)
-    $Assignment=$Ast.Find({param($N) $N -is [Management.Automation.Language.AssignmentStatementAst] -and $N.Left.Extent.Text -eq '$Data'},$true)
-    Invoke-Expression $Assignment.Extent.Text
-    [Console]::Out.WriteLine(($Data | ConvertTo-Json -Compress))
-}
+        $Preload = Join-Path $TestRoot 'mock-desktop.cjs'
+        [IO.File]::WriteAllText($Preload, @'
+const cp = require('node:child_process');
+cp.spawnSync = (exe, args, options) => {
+  if (!exe.endsWith('clip.exe')) throw Error('Unexpected clipboard executable');
+  console.log('CLIP:' + options.input.subarray(2).toString('utf16le'));
+  return { status: 0 };
+};
+cp.spawn = (exe, args) => {
+  console.log(Buffer.from(args.at(-1), 'base64').toString('utf8'));
+  return { on() {}, unref() {} };
+};
 '@
+        )
+        $Harness = '[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)'
         $Info=New-Object Diagnostics.ProcessStartInfo
         $Info.FileName=$PowerShell
         $Info.Arguments='-NoProfile -NonInteractive -Sta -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Harness + "`n" + $Launcher))
+        $Info.EnvironmentVariables['NODE_OPTIONS'] = '--require ' + (ConvertTo-Json -InputObject $Preload -Compress)
         $Info.UseShellExecute=$false; $Info.CreateNoWindow=$true
         $Info.RedirectStandardInput=$true; $Info.RedirectStandardOutput=$true; $Info.RedirectStandardError=$true
         $Info.StandardOutputEncoding=[Text.UTF8Encoding]::new($false)

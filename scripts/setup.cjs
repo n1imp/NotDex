@@ -4,7 +4,7 @@ const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { findExecutable } = require('../src/desktop.cjs');
 
-const runtimeFiles = ['notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs'];
+const runtimeFiles = ['notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs'];
 const ownedFiles = [...runtimeFiles, 'node-path.txt'];
 const repo = path.dirname(__dirname);
 
@@ -60,8 +60,11 @@ function systemPowerShell() {
 }
 function makeHookCommand(platform, directory, nodePath = process.execPath) {
   if (platform === 'win32') {
-    const invocation = "& '" + path.join(directory, 'notificar.ps1').replace(/'/g, "''") + "'";
-    return '"' + systemPowerShell() + '" -NoProfile -NonInteractive -Sta -ExecutionPolicy Bypass -EncodedCommand ' + Buffer.from(invocation, 'utf16le').toString('base64');
+    const entry = Buffer.from(path.join(directory, 'notificar-windows.cjs'), 'utf8').toString('base64');
+    const invocation = "require(Buffer.from('" + entry + "','base64').toString('utf8')).main()";
+    const cmd = path.win32.join(process.env.SystemRoot || 'C:\\Windows', 'System32/cmd.exe');
+    // --% preserves CMD quoting when Codex provides a PowerShell session shell.
+    return cmd + ' --% /d /s /c ""' + nodePath + '" --no-warnings -e "' + invocation + '""';
   }
   return quoteShell(nodePath) + ' --no-warnings ' + quoteShell(path.join(directory, 'notificar-unix.cjs'));
 }

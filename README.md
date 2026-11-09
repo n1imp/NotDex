@@ -4,12 +4,12 @@ Clipboard automático e notificações com métricas para o **Codex CLI**, em Wi
 
 Ao concluir um turno, o NotDex copia a resposta final e mostra o título da sessão, total de tokens, input, output, percentual de cache e latência. A resposta não aparece na notificação.
 
-**Prévia experimental:** o timeout de cinco segundos ainda pode ser excedido no Windows; alguns desktops Linux não reproduzem o som. macOS ainda não teve validação visual e sonora nativa.
+**Prévia experimental:** alguns desktops Linux não reproduzem o som. macOS ainda não teve validação visual e sonora nativa.
 
 ## Instalar em poucos passos
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.166.0+** instalado e disponível no PATH.
-2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.4/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.5/NotDex.zip) e **extraia toda a pasta**.
 3. Abra o instalador do seu sistema:
 
 | Sistema | Instalador |
@@ -44,17 +44,19 @@ sh install.sh
 
 Outros hooks e configurações são preservados. O runtime fica em `CODEX_HOME/notdex`, por padrão `~/.codex/notdex`. O cache privado do Node e pacotes Linux compartilhados permanecem após desinstalar.
 
-Ao atualizar de uma versão anterior à Preview 4, reinicie o Codex e revise/aprove novamente o NotDex em **/hooks**: o comando Windows agora usa o caminho absoluto do PowerShell do sistema.
+Ao atualizar de uma versão anterior à Preview 5, reinicie o Codex e revise/aprove novamente o NotDex em **/hooks**: o comando Windows mudou para um launcher Node com caminhos absolutos.
+
+No Windows, o hook copia via `clip.exe` e inicia um worker Node oculto. Esse worker executa PowerShell 5.1 para consultar métricas, enviar o toast e reproduzir o som, nessa ordem. O hook termina sem esperar por essas tarefas nem compartilhar seus canais de saída. A inicialização fria do PowerShell fica fora do timeout de cinco segundos. O envio do toast precede o som; o Windows controla quando o banner aparece na tela.
 
 ## Requisitos e limites conhecidos
 
 - Uma sessão gráfica local é necessária; SSH/headless não oferece este fluxo de clipboard e notificações.
-- Windows requer PowerShell 5.1. A inicialização fria do PowerShell excedeu cinco segundos em testes reais; `exit 0` não impede o Codex de encerrar um processo por timeout.
+- Windows requer PowerShell 5.1. O launcher funciona nos shells CMD e PowerShell. O clipboard tem limite de 1,5 segundo; bloqueios do sistema ainda podem causar atraso. `exit 0` não impede o Codex de encerrar um processo por timeout.
 - macOS usa `pbcopy`, AppleScript e o som `Glass`. Permissões e apresentação ainda precisam de teste em um Mac real.
 - Linux usa `notify-send` e `wl-copy` em Wayland, ou `xclip`/`xsel` em X11. O instalador oferece dependências via apt-get, dnf, pacman ou zypper. O daemon decide se aceita o som solicitado; Xfce4 Notifyd 0.9.4 no Ubuntu testado exibiu o banner, mas ficou sem som.
 - O bootstrap cobre x64/ARM64 quando houver binário oficial compatível. Linux requer kernel 4.18+ e glibc 2.28+; musl x64 é experimental. Outras arquiteturas exigem Node.js 24+ compatível no PATH. Veja as [plataformas do Node 24](https://github.com/nodejs/node/blob/v24.22.2/BUILDING.md#platform-list).
 - O primeiro download requer internet; Unix também precisa de curl ou wget. Políticas administrativas ou hooks explicitamente desabilitados podem impedir a integração.
-- Se você já usa um hook de notificação manual, desative o antigo para evitar avisos duplicados.
+- Se você já usa um hook de notificação manual, desative o antigo para evitar avisos duplicados. O Codex combina os hooks de `config.toml` e `hooks.json`; instalar o NotDex não desativa comandos manuais antigos.
 - Círculos coloridos são emojis; a aparência depende do sistema. Não há garantia de cópia abaixo de 50 ms.
 
 ## Métricas e privacidade

@@ -39,11 +39,27 @@ test('Linux uses Wayland first and falls back to X11 tools after failure', () =>
   assert.deepEqual(calls, [['wl-copy', []], ['xclip', ['-selection', 'clipboard']], ['xsel', ['--clipboard', '--input']]]);
 });
 
+test('Windows clipboard uses the trusted system tool and UTF-16LE with a BOM', () => {
+  const text = 'A\u00e7\u00e3o \u{1f680}\r\nC:\\new\\file & 100%';
+  assert.equal(copyText(text, {
+    platform: 'win32', env: { SystemRoot: 'C:\\Windows' },
+    find() { throw Error('must not search PATH'); },
+    run(command, args, options) {
+      assert.equal(command, 'C:\\Windows\\System32\\clip.exe');
+      assert.deepEqual(args, []);
+      assert.deepEqual(options.input.subarray(0, 2), Buffer.from([0xff, 0xfe]));
+      assert.equal(options.input.subarray(2).toString('utf16le'), text);
+      assert.equal(options.shell, false);
+      assert.equal(options.timeout, 1500);
+      return { status: 0 };
+    }
+  }), true);
+});
+
 test('empty clipboard input and unavailable graphical sessions launch no commands', () => {
   const run = () => { throw new Error('must not run'); };
   assert.equal(copyText('', { platform: 'darwin', run }), false);
   assert.equal(copyText('hello', { platform: 'linux', env: {}, run }), false);
-  assert.equal(copyText('hello', { platform: 'win32', run }), false);
 });
 
 test('notification body contains only metrics and marks unknown and estimated values', () => {

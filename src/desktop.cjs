@@ -22,7 +22,7 @@ function findExecutable(name, env = process.env, platform = process.platform) {
 
 function execute(name, args, input, { env = process.env, platform = process.platform, find = findExecutable, run = spawnSync } = {}) {
   try {
-    const command = find(name, env, platform);
+    const command = path.isAbsolute(name) || (platform === 'win32' && path.win32.isAbsolute(name)) ? name : find(name, env, platform);
     if (!command) return false;
     const result = run(command, args, {
       input, encoding: 'utf8', env, shell: false, timeout: 1500, killSignal: 'SIGKILL', stdio: ['pipe', 'ignore', 'ignore']
@@ -34,6 +34,10 @@ function execute(name, args, input, { env = process.env, platform = process.plat
 function copyText(text, options = {}) {
   if (typeof text !== 'string' || !text.trim()) return false;
   const { platform = process.platform, env = process.env } = options;
+  if (platform === 'win32') {
+    const input = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(text, 'utf16le')]);
+    return execute(path.win32.join(env.SystemRoot || 'C:\\Windows', 'System32/clip.exe'), [], input, options);
+  }
   if (platform === 'darwin') return execute('pbcopy', [], text, options);
   if (platform !== 'linux') return false;
   if (env.WAYLAND_DISPLAY && execute('wl-copy', [], text, options)) return true;
