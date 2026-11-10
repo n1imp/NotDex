@@ -6,7 +6,7 @@ const { findExecutable } = require('../src/desktop.cjs');
 const { prepareMcpConfig, parse: parseToml } = require('./mcp-config.cjs');
 const { dependencyFiles, installDependencies, removeOwnedTree } = require('./dependencies.cjs');
 
-const runtimeFiles = ['notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
+const runtimeFiles = ['THIRD_PARTY_NOTICES.txt', 'notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
   'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs'];
 const ownedFiles = [...runtimeFiles, 'node-path.txt'];
 const repo = path.dirname(__dirname);

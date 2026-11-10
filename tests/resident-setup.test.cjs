@@ -32,6 +32,7 @@ test('resident installation uses MCP for Stop and prompt, retains unrelated conf
     assert.equal(owned.length, 1); assert.equal(owned[0].timeout, 5); assert.equal(owned[0].command, undefined);
   }
   const runtime = path.join(home, 'notdex');
+  assert.match(fs.readFileSync(path.join(runtime, 'THIRD_PARTY_NOTICES.txt'), 'utf8'), /SourceLair[\s\S]*Permission is hereby granted/);
   assert(fs.existsSync(path.join(runtime, 'node_modules/@xterm/headless/package.json')));
   const dependency = path.join(runtime, 'node_modules/@xterm/headless/package.json');
   fs.unlinkSync(dependency);

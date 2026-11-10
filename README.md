@@ -9,7 +9,7 @@ Ao terminar um turno, copia a resposta final e mostra uma notificação com o t�
 ## Instalar
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.167.0+** instalado e disponível no PATH.
-2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.1/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.2/NotDex.zip) e **extraia toda a pasta**.
 3. Execute o instalador:
 
 | Sistema | Instalar | Abrir Codex com o painel |
@@ -122,4 +122,4 @@ O cache privado fica em `%LOCALAPPDATA%/NotDex/runtime`, `~/Library/Caches/NotDe
 
 Com Node 24+ e npm, execute `npm ci --ignore-scripts`, depois `npm test`. Os testes usam perfis temporários e fixtures; não instalam no perfil pessoal. O [CI](https://github.com/n1imp/NotDex/actions) valida Windows, macOS e Linux, incluindo PTY nativo. Testes automatizados não comprovam som audível, permissões ou aparência em cada desktop.
 
-Contribua por [issues](https://github.com/n1imp/NotDex/issues) e pull requests; consulte [CONTRIBUTING.md](CONTRIBUTING.md). O ZIP inclui runtime, dependências e suas licenças, instaladores, README e [MIT](LICENSE). Testes, CI e documentos internos ficam fora do pacote.
+Contribua por [issues](https://github.com/n1imp/NotDex/issues) e pull requests; consulte [CONTRIBUTING.md](CONTRIBUTING.md). O ZIP inclui runtime, dependências, [avisos de terceiros](src/THIRD_PARTY_NOTICES.txt), instaladores, README e [MIT](LICENSE). Testes, CI e documentos internos ficam fora do pacote.

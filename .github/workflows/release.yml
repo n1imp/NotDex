@@ -44,6 +44,9 @@ jobs:
             done
           done
           unzip -p NotDex.zip NotDex/NotDex.cmd > /dev/null
+          unzip -p NotDex.zip NotDex/src/THIRD_PARTY_NOTICES.txt | cmp src/THIRD_PARTY_NOTICES.txt -
+          unzip -p NotDex.zip NotDex/node_modules/@lydell/node-pty/LICENSE > /dev/null
+          unzip -p NotDex.zip NotDex/node_modules/smol-toml/LICENSE > /dev/null
           sha256sum NotDex.zip > SHA256SUMS.txt
       - name: Publish versioned download
         env:
