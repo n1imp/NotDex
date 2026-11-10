@@ -30,17 +30,20 @@ if(process.argv.includes('app-server')){
 }
 `);
   const screen = new Terminal({ cols: 100, rows: 24, allowProposedApi: true });
-  const child = pty.spawn(process.execPath, [path.resolve(__dirname, '../src/terminal.cjs'), '--codex', fixture, '--codex-home', root], {
+  const inputAudit = path.join(root, 'synthetic-input.txt'), wrapper = path.join(root, 'wrapper.cjs');
+  fs.writeFileSync(wrapper, `process.stdin.on('data',data=>require('node:fs').appendFileSync(${JSON.stringify(inputAudit)},Buffer.from(data).toString('hex')+'\\n'));require(${JSON.stringify(path.resolve(__dirname, '../src/terminal.cjs'))}).main();`);
+  const child = pty.spawn(process.execPath, [wrapper, '--codex', fixture, '--codex-home', root], {
     cols: 100, rows: 24, cwd: root, env: { ...process.env, TERM: 'xterm-256color' }
   });
   let exited = false, code;
   const exit = new Promise(resolve => child.onExit(result => { exited = true; code = result.exitCode; resolve(); }));
-  child.onData(data => screen.write(data));
+  let outputTail = '';
+  child.onData(data => { outputTail = (outputTail + data).slice(-4000); screen.write(data); });
   t.after(() => { if (!exited || process.platform === 'win32') { try { child.kill(); } catch {} } screen.dispose(); });
   const lines = () => Array.from({ length: screen.rows }, (_, i) => screen.buffer.active.getLine(screen.buffer.active.baseY + i)?.translateToString() || '');
   const wait = async condition => {
     for (let i = 0; i < 300; i++) { if (condition()) return; if (exited) break; await new Promise(resolve => setTimeout(resolve, 50)); }
-    assert.fail('Terminal condition not reached: ' + lines().join('\n'));
+    assert.fail('Terminal condition not reached: ' + lines().join('\n') + '\nSynthetic input hex: ' + (fs.existsSync(inputAudit) ? fs.readFileSync(inputAudit, 'utf8') : 'none'));
   };
   await wait(() => lines().some(line => line.includes('Total 110')) && lines().some(line => line.includes('Conta plus')));
   assert(lines()[0].indexOf('NotDex') > 50);
@@ -58,5 +61,5 @@ if(process.argv.includes('app-server')){
   child.write('h');
   await wait(() => !lines().some(line => line.includes('NotDex')) && lines()[0].includes('CLI_FIXTURE'));
   child.write('z'); await wait(() => lines().some(line => line.includes('INPUT_Z')));
-  child.write('q'); await exit; assert.equal(code, 0);
+  child.write('q'); await exit; assert.equal(code, 0, outputTail);
 });
