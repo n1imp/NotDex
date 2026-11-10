@@ -103,7 +103,7 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
       process.off('SIGTERM', terminate); process.off('SIGHUP', terminate);
       process.off('SIGINT', interrupt);
       try { input.setRawMode(!!wasRaw); input.pause(); } catch {}
-      try { output.write('\x1b[?2026l\x1b[0m\x1b[?25h\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?1049l'); } catch {}
+      try { output.write('\x1b[?2026l\x1b[0m\x1b[?25h\x1b[?2004l\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1006l\x1b[?9001l\x1b[?1049l'); } catch {}
       virtual.dispose();
       if (error) reject(error); else resolve(code);
     };

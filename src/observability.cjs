@@ -66,11 +66,17 @@ class MetricsAccumulator {
       const model = typeof payload.model === 'string' ? payload.model : existing?.model || this.turns.get(id)?.model;
       const signature = JSON.stringify([normalizeUsage(payload.usage), normalizeUsage(payload.turn_token_usage), normalizeUsage(payload.thread_token_usage), model, number(payload.duration_ms)]);
       if (existing?.signature === signature) return;
-      if (hasUsage(payload.thread_token_usage)) this.canonical = normalizeUsage(payload.thread_token_usage);
+      if (hasUsage(payload.thread_token_usage) && (!existing || !this.canonical || this.canonicalResponseId === payload.response_id)) {
+        this.canonical = normalizeUsage(payload.thread_token_usage);
+        this.canonicalResponseId = payload.response_id;
+      }
       if (id) {
         if (!existing || !this.latestTurnId) this.latestTurnId = id;
         const turn = this.turn(id);
-        if (hasUsage(payload.turn_token_usage)) turn.canonical = normalizeUsage(payload.turn_token_usage);
+        if (hasUsage(payload.turn_token_usage) && (!existing || !turn.canonical || turn.canonicalResponseId === payload.response_id)) {
+          turn.canonical = normalizeUsage(payload.turn_token_usage);
+          turn.canonicalResponseId = payload.response_id;
+        }
         if (hasUsage(payload.usage)) {
           const request = { turnId: id, model, signature,
             usage: normalizeUsage(payload.usage), duration: number(payload.duration_ms), id: payload.response_id || null };

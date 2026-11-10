@@ -46,6 +46,36 @@ test('panel displays actual quota scope and reference dollars; untrusted strings
   assert(lines.every(line => line.length === 48));
 });
 
+test('split unknown CSI and SS3 sequences remain intact while editing', () => {
+  const state = new OverlayState(), input = new InputRouter(state, () => ({ cols: 100, rows: 30 }));
+  input.push('\x1b[24~');
+  assert.equal(input.push('\x1b[1;2'), '');
+  assert.equal(input.push('H'), '\x1b[1;2H');
+  assert.equal(state.visible, true);
+  assert.equal(input.push('\x1bO'), '');
+  assert.equal(input.push('H'), '\x1bOH');
+  assert.equal(state.visible, true);
+});
+
+test('Windows terminal key records handle controls without consuming ordinary or modified keys', () => {
+  const state = new OverlayState(), input = new InputRouter(state, () => ({ cols: 100, rows: 30 }));
+  const key = (vk, char = 0, down = 1, modifiers = 0) => `\x1b[${vk};0;${char};${down};${modifiers};1_`;
+  assert.equal(input.push(key(123).slice(0, -1)), '');
+  assert.equal(input.push('_'), '');
+  assert(state.editing);
+  assert.equal(input.push(key(123, 0, 0)), '');
+  assert(state.editing);
+  assert.equal(input.push(key(37)), '');
+  assert.equal(state.x, 51);
+  assert.equal(input.push(key(9, 9)), '');
+  assert.equal(state.scope, 'request');
+  assert.equal(input.push(key(65, 97)), key(65, 97));
+  assert.equal(input.push(key(123, 0, 1, 8)), key(123, 0, 1, 8));
+  assert.equal(input.push(key(27, 27)), '');
+  assert.equal(state.editing, false);
+  assert.equal(input.push(key(37)), key(37));
+});
+
 for (const alternate of [false, true]) test(`compositor restores covered Codex content after moving/hiding (${alternate ? 'alternate' : 'normal'} buffer)`, async () => {
   const source = new Terminal({ cols: 100, rows: 20, allowProposedApi: true });
   const output = new Terminal({ cols: 100, rows: 20, allowProposedApi: true });

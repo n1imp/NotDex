@@ -28,7 +28,7 @@ const ARROWS = { '\x1b[A': [0, -1], '\x1b[B': [0, 1], '\x1b[C': [1, 0], '\x1b[D'
 const KEYS = [F12, PASTE_START, PASTE_END, ...Object.keys(ARROWS)];
 
 class InputRouter {
-  constructor(state, size) { this.state = state; this.size = size; this.buffer = ''; this.pasting = false; }
+  constructor(state, size) { this.state = state; this.size = size; this.buffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
   push(data) {
     this.buffer += data; let forward = '';
     while (this.buffer) {
@@ -50,8 +50,28 @@ class InputRouter {
       }
       if (KEYS.some(value => value.startsWith(this.buffer))) break;
       if (this.buffer[0] === '\x1b' && this.buffer.length > 1) {
+        if (/^\x1b(?:\[[0-?]*[ -/]*|O)$/.test(this.buffer) && this.buffer.length < 128) break;
         const sequence = /^\x1b(?:\[[0-?]*[ -/]*[@-~]|O.|.)/.exec(this.buffer);
-        if (sequence) { forward += sequence[0]; this.buffer = this.buffer.slice(sequence[0].length); continue; }
+        if (sequence) {
+          const windows = /^\x1b\[(\d+);\d+;\d+;([01]);(\d+);(\d+)_$/.exec(sequence[0]);
+          let handled = false;
+          if (windows) {
+            const [, vk, down, modifiers, repeats] = windows;
+            if (down === '0' && this.windowsKeys.delete(vk)) handled = true;
+            else if (down === '1' && !(Number(modifiers) & 31)) {
+              if (vk === '123') { this.state.visible = true; this.state.editing = !this.state.editing; handled = true; }
+              else if (this.state.editing) {
+                const arrows = { 37: [-1, 0], 38: [0, -1], 39: [1, 0], 40: [0, 1] };
+                if (arrows[vk]) { const { cols, rows } = this.size(); this.state.move(...arrows[vk].map(value => value * Math.min(1000, Number(repeats))), cols, rows); handled = true; }
+                else if (vk === '9') { this.state.scope = SCOPES[(SCOPES.indexOf(this.state.scope) + 1) % SCOPES.length]; handled = true; }
+                else if (vk === '27' || vk === '72') { if (vk === '72') this.state.visible = false; this.state.editing = false; handled = true; }
+              }
+              if (handled) this.windowsKeys.add(vk);
+            }
+          }
+          if (!handled) forward += sequence[0];
+          this.buffer = this.buffer.slice(sequence[0].length); continue;
+        }
       }
       const char = this.buffer[0]; this.buffer = this.buffer.slice(1);
       if (this.state.editing && char === '\t') this.state.scope = SCOPES[(SCOPES.indexOf(this.state.scope) + 1) % SCOPES.length];

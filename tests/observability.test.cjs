@@ -104,3 +104,18 @@ test('an unchanged response replay after a newer request does not rewind canonic
   assert.equal(metrics.snapshot().session.total_tokens, 330);
   assert.equal(metrics.snapshot().request_id, 'r2');
 });
+
+test('enriching an older response preserves newer aggregates and updates that request metadata', () => {
+  const metrics = new MetricsAccumulator({ sessionId: 'session' });
+  metrics.consume(context('a'));
+  const first = record('r1', 'a', usage(100, 0, 10));
+  metrics.consume(first);
+  metrics.consume(record('r2', 'a', usage(200, 0, 20), usage(300, 0, 30), usage(300, 0, 30)));
+  metrics.consume({ ...first, payload: { ...first.payload, duration_ms: 123 } });
+  const result = metrics.snapshot();
+  assert.equal(result.session.total_tokens, 330);
+  assert.equal(result.turn.total_tokens, 330);
+  assert.equal(result.request_id, 'r2');
+  assert.equal(result.session.usd_reference, '0.000900');
+  assert.equal(metrics.requests.get('r1').duration, 123);
+});
