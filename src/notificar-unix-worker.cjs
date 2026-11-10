@@ -2,7 +2,7 @@ const { getSessionMetrics } = require('./notificar-metricas.cjs');
 const { notify } = require('./desktop.cjs');
 
 async function runWorker(data, options) {
-  try { return notify(await getSessionMetrics(data), options); } catch { return false; }
+  try { return notify(await getSessionMetrics({ ...data, scope: 'turn' }), options); } catch { return false; }
 }
 
 module.exports = { runWorker };

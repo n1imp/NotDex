@@ -18,4 +18,7 @@ command -v codex >/dev/null 2>&1 || { printf '%s\n' 'NotDex: install Codex CLI a
 notdex_linux_dependencies "$notdex_no_packages"
 . "$notdex_repo/scripts/bootstrap.sh"
 notdex_bootstrap "$notdex_repo" "$notdex_home" "$notdex_no_download"
+if [ "$notdex_no_download" = true ]; then
+    exec "$NOTDEX_NODE" --no-warnings "$notdex_repo/install.cjs" --codex-home "$notdex_home" --no-download
+fi
 exec "$NOTDEX_NODE" --no-warnings "$notdex_repo/install.cjs" --codex-home "$notdex_home"

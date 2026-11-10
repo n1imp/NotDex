@@ -4,8 +4,8 @@ const number = value => Number.isSafeInteger(value) && value >= 0 ? value : null
 
 function normalizeUsage(raw) {
   const result = Object.fromEntries(FIELDS.map(field => [field, number(raw?.[field])]));
-  if (result.total_tokens === null && result.input_tokens !== null && result.output_tokens !== null) result.total_tokens = result.input_tokens + result.output_tokens;
-  result.cache_write_input_tokens = number(raw?.cache_write_input_tokens) ?? 0;
+  if (result.total_tokens === null && result.input_tokens !== null && result.output_tokens !== null) result.total_tokens = number(result.input_tokens + result.output_tokens);
+  result.cache_write_input_tokens = raw && Object.hasOwn(raw, 'cache_write_input_tokens') ? number(raw.cache_write_input_tokens) : 0;
   return result;
 }
 
@@ -62,15 +62,19 @@ class MetricsAccumulator {
     }
     if (event.type === 'token_usage_record') {
       const id = payload.turn_id || this.latestTurnId;
+      const existing = payload.response_id ? this.requests.get(payload.response_id) : null;
+      const model = typeof payload.model === 'string' ? payload.model : existing?.model || this.turns.get(id)?.model;
+      const signature = JSON.stringify([normalizeUsage(payload.usage), normalizeUsage(payload.turn_token_usage), normalizeUsage(payload.thread_token_usage), model, number(payload.duration_ms)]);
+      if (existing?.signature === signature) return;
       if (hasUsage(payload.thread_token_usage)) this.canonical = normalizeUsage(payload.thread_token_usage);
       if (id) {
-        this.latestTurnId = id;
+        if (!existing || !this.latestTurnId) this.latestTurnId = id;
         const turn = this.turn(id);
         if (hasUsage(payload.turn_token_usage)) turn.canonical = normalizeUsage(payload.turn_token_usage);
         if (hasUsage(payload.usage)) {
-          const request = { turnId: id, model: typeof payload.model === 'string' ? payload.model : turn.model,
+          const request = { turnId: id, model, signature,
             usage: normalizeUsage(payload.usage), duration: number(payload.duration_ms), id: payload.response_id || null };
-          turn.request = request;
+          if (!existing || turn.request?.id === request.id) turn.request = request;
           if (request.id) this.requests.set(request.id, request);
         }
       }

@@ -92,3 +92,10 @@ test('desktop command failures are silent', () => {
   assert.equal(copyText('text', options), false);
   assert.equal(notify({}, options), false);
 });
+
+test('turn notification labels only turn counts and an explicitly named dollar reference', () => {
+  const text = formatNotification({ scope: 'turn', total_tokens: 110, input_tokens: 100, output_tokens: 10, usd_reference: '0.000205' });
+  assert(text.body.startsWith('Turno 110'));
+  assert.match(text.body, /US\$ ref\./);
+  assert(!text.body.includes('session'));
+});

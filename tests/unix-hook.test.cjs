@@ -56,6 +56,8 @@ test('worker uses the shared metrics reader and excludes response text from noti
   const transcript = path.join(root, 'log.jsonl');
   fs.writeFileSync(path.join(root, 'session_index.jsonl'), JSON.stringify({ id: 'session', thread_name: 'Session title' }));
   fs.writeFileSync(transcript, [
+    { type: 'session_meta', payload: {} },
+    { type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn' } },
     { type: 'event_msg', payload: { type: 'token_count', info: { total_token_usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120, cached_input_tokens: 50 } } } },
     { type: 'response_item', payload: { text: 'PRIVATE' } }
   ].map(event => JSON.stringify(event)).join('\n'));
@@ -65,7 +67,7 @@ test('worker uses the shared metrics reader and excludes response text from noti
   });
   assert.equal(notification[0], 'notify-send');
   assert.equal(notification[1].at(-2), 'Session title');
-  assert.match(notification[1].at(-1), /Total 120/);
+  assert.match(notification[1].at(-1), /Turno 120/);
   assert.equal(JSON.stringify(notification).includes('PRIVATE'), false);
 });
 
@@ -76,7 +78,7 @@ test('Unix hook subprocess copies UTF-8 stdin and detached worker notifies with 
   const bin = path.join(root, 'bin');
   fs.mkdirSync(installed);
   fs.mkdirSync(bin);
-  for (const name of ['desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-metricas.cjs']) fs.copyFileSync(path.join(__dirname, '../src', name), path.join(installed, name));
+  for (const name of ['desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-metricas.cjs', 'observability.cjs', 'prices.cjs']) fs.copyFileSync(path.join(__dirname, '../src', name), path.join(installed, name));
   const clipboard = path.join(root, 'clipboard');
   const notification = path.join(root, 'notification');
   const fake = `#!${process.execPath}\nconst fs=require('node:fs'); const path=require('node:path'); if (['pbcopy','wl-copy'].includes(path.basename(process.argv[1]))) { if (process.env.NOTDEX_HANG) setInterval(()=>{},1000); else fs.writeFileSync(process.env.NOTDEX_CLIP, fs.readFileSync(0)); } else fs.writeFileSync(process.env.NOTDEX_NOTICE, JSON.stringify(process.argv.slice(2)));\n`;
@@ -95,7 +97,7 @@ test('Unix hook subprocess copies UTF-8 stdin and detached worker notifies with 
   for (let attempt = 0; attempt < 100 && !fs.existsSync(notification); attempt++) await new Promise(resolve => setTimeout(resolve, 25));
   const notice = JSON.parse(fs.readFileSync(notification, 'utf8'));
   assert.equal(notice.at(-2), '-Session 😀');
-  assert.match(notice.at(-1), /Total N\/D/);
+  assert.match(notice.at(-1), /Turno N\/D/);
   assert.equal(JSON.stringify(notice).includes('PRIVATE'), false);
   fs.unlinkSync(notification);
   const started = Date.now();

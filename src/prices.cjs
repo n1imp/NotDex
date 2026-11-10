@@ -31,7 +31,7 @@ function requestPrice(model, usage) {
   const { input_tokens: input, cached_input_tokens: cached, output_tokens: output } = usage;
   if (!rates || ![input, cached, output].every(n => Number.isSafeInteger(n) && n >= 0) || cached > input) return null;
   // Cache-write duration is not present in Codex usage records; do not guess its API rate.
-  if (usage.cache_write_input_tokens) return null;
+  if (usage.cache_write_input_tokens !== undefined && usage.cache_write_input_tokens !== 0) return null;
   const selected = input > 272000 && rates.length === 6 ? rates.slice(3) : rates;
   return [input - cached, cached, output].reduce((sum, tokens, i) => sum + BigInt(tokens) * BigInt(Math.round(selected[i] * 1e6)), 0n);
 }

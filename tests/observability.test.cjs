@@ -93,3 +93,14 @@ test('another thread cannot overwrite the selected thread; incomplete duration r
   assert.equal(result.session.total_tokens, 110);
   assert.equal(result.request.latency_ms, null);
 });
+
+test('an unchanged response replay after a newer request does not rewind canonical totals or the last request', () => {
+  const metrics = new MetricsAccumulator({ sessionId: 'session' });
+  metrics.consume(context('a'));
+  const first = record('r1', 'a', usage(100, 0, 10));
+  metrics.consume(first);
+  metrics.consume(record('r2', 'a', usage(200, 0, 20), usage(300, 0, 30), usage(300, 0, 30)));
+  metrics.consume(first);
+  assert.equal(metrics.snapshot().session.total_tokens, 330);
+  assert.equal(metrics.snapshot().request_id, 'r2');
+});

@@ -7,5 +7,6 @@ if (-not (Get-Command codex.cmd,codex.exe -ErrorAction SilentlyContinue | Select
 $NodePath = Get-NotDexNode -NodePath $NodePath -CodexHome $CodexHome -NoDownload:$NoDownload
 $Arguments = @('--no-warnings',(Join-Path $PSScriptRoot 'install.cjs'))
 if ($CodexHome) { $Arguments += @('--codex-home',$CodexHome) }
+if ($NoDownload) { $Arguments += '--no-download' }
 & $NodePath @Arguments
 if ($LASTEXITCODE -ne 0) { throw 'NotDex installation failed; see the error above.' }
