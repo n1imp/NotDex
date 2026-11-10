@@ -7,7 +7,7 @@ const { prepareMcpConfig, parse: parseToml } = require('./mcp-config.cjs');
 const { dependencyFiles, installDependencies, removeOwnedTree } = require('./dependencies.cjs');
 
 const runtimeFiles = ['notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
-  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs'];
+  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs'];
 const ownedFiles = [...runtimeFiles, 'node-path.txt'];
 const repo = path.dirname(__dirname);
 
@@ -46,7 +46,8 @@ function manifest(directory) {
   const file = path.join(directory, 'manifest.json');
   if (!entry(file)) throw new Error('Existing directory does not belong to NotDex: ' + directory);
   const value = readJson(file);
-  if (value.app !== 'NotDex' || ![1, 2].includes(value.format_version) || typeof value.hook_command !== 'string' || !value.hook_command) {
+  if (value.app !== 'NotDex' || ![1, 2].includes(value.format_version) ||
+    (value.format_version === 1 ? typeof value.hook_command !== 'string' || !value.hook_command : value.hook_server !== 'notdex' || value.hook_tool !== 'notdex_event')) {
     throw new Error('Unrecognized NotDex manifest: ' + file);
   }
   if (value.owned_commands !== undefined && (!Array.isArray(value.owned_commands) || value.owned_commands.some(command => typeof command !== 'string'))) {
@@ -123,8 +124,7 @@ function install(input = {}) {
   const previous = manifest(directory);
   const hooksFile = path.join(home, 'hooks.json');
   const config = readJson(hooksFile);
-  const command = makeHookCommand(options.platform, directory);
-  const commands = ownership(previous, command);
+  const commands = ownership(previous);
   for (const [event, name] of [['Stop', 'stop'], ['UserPromptSubmit', 'prompt']]) {
     const input = { event: name, session_id: '${session_id}', turn_id: '${turn_id}', transcript_path: '${transcript_path}', cwd: '${cwd}', model: '${model}' };
     if (name === 'stop') input.last_assistant_message = '${last_assistant_message}';
@@ -142,7 +142,7 @@ function install(input = {}) {
   const payloads = runtimeFiles.map(name => [name, fs.readFileSync(path.join(repo, 'src', name))]);
   fs.mkdirSync(directory, { recursive: true });
   // Retain prior ownership so a failed hooks write can be retried or uninstalled safely.
-  const next = { app: 'NotDex', format_version: 2, hook_command: command, owned_commands: commands,
+  const next = { app: 'NotDex', format_version: 2, hook_server: 'notdex', hook_tool: 'notdex_event', owned_commands: commands,
     owned_mcp_blocks: [...new Set([mcp.block, ...(previous?.owned_mcp_blocks || [])])], owns_dependencies: true, dependency_hash: previous?.dependency_hash };
   writeJson(path.join(directory, 'manifest.json'), next);
   for (const [name, data] of payloads) atomicWrite(path.join(directory, name), data);

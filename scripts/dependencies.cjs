@@ -33,18 +33,19 @@ function ensureDependencies({ noDownload = false } = {}) {
 
 function dependencyFiles() {
   const lockBytes = fs.readFileSync(path.join(repo, 'package-lock.json'));
-  const hash = createHash('sha256').update(lockBytes).digest('hex');
+  const lock = JSON.parse(lockBytes);
+  const hash = createHash('sha256').update(JSON.stringify(Object.entries(lock.packages).filter(([key]) => key))).digest('hex');
   if (cached?.hash === hash) return cached;
   if (!available()) throw Error('Run the installer to prepare pinned dependencies first.');
   const root = path.join(repo, 'node_modules');
   if (fs.lstatSync(root).isSymbolicLink()) throw Error('Dependency directory must not be a link.');
-  const lock = JSON.parse(lockBytes), files = [];
+  const files = [];
   const walk = (directory, relative) => {
     for (const name of fs.readdirSync(directory)) {
       const file = path.join(directory, name), rel = path.join(relative, name), stat = fs.lstatSync(file);
       if (stat.isSymbolicLink()) throw Error('Dependency links are not supported: ' + rel);
       if (stat.isDirectory()) walk(file, rel);
-      else if (stat.isFile()) files.push({ name: rel, bytes: fs.readFileSync(file), mode: stat.mode & 0o755 });
+      else if (stat.isFile()) files.push({ name: rel, bytes: fs.readFileSync(file), mode: (stat.mode & 0o755) | (path.basename(file) === 'spawn-helper' ? 0o100 : 0) });
       else throw Error('Unsupported dependency entry: ' + rel);
     }
   };

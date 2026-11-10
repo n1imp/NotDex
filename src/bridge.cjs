@@ -37,6 +37,7 @@ function createEventReceiver({ token, onEvent }) {
     });
     req.on('error', () => {});
     req.on('end', () => {
+      if (res.writableEnded) return;
       try {
         const data = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if (!['prompt', 'stop'].includes(data.event) || typeof data.session_id !== 'string' || Object.keys(data).some(key => !META_FIELDS.includes(key))) throw Error('Invalid metadata');
