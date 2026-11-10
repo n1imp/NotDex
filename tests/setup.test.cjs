@@ -171,7 +171,7 @@ test('native Unix CLI installation and registered hook work with desktop command
   const env = { ...process.env, PATH: bin + path.delimiter + process.env.PATH, DISPLAY: ':fixture',
     NOTDEX_CLIP_FIXTURE: path.join(root, 'clip'), NOTDEX_NOTIFY_FIXTURE: path.join(root, 'notify') };
   const repo = path.dirname(__dirname);
-  const result = spawnSync('/bin/sh', [path.join(repo, 'install.sh'), '--no-download', '--no-system-packages', '--codex-home', home], { env, encoding: 'utf8' });
+  const result = spawnSync('/bin/sh', [path.join(repo, 'install.sh'), '--no-download', '--no-system-packages', '--no-shell-integration', '--codex-home', home], { env, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
   const input = [{ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
     { id: 2, method: 'tools/call', params: { name: 'notdex_event', arguments: { event: 'stop', session_id: 'fixture', last_assistant_message: 'PRIVATE ANSWER' } } }]
@@ -184,7 +184,7 @@ test('native Unix CLI installation and registered hook work with desktop command
   for (let i = 0; i < 60 && !fs.existsSync(env.NOTDEX_NOTIFY_FIXTURE); i++) await new Promise(resolve => setTimeout(resolve, 50));
   assert.equal(fs.existsSync(env.NOTDEX_NOTIFY_FIXTURE), true);
   assert.equal(fs.readFileSync(env.NOTDEX_NOTIFY_FIXTURE, 'utf8').includes('PRIVATE ANSWER'), false);
-  const removed = spawnSync('/bin/sh', [path.join(repo, 'uninstall.sh'), '--codex-home', home], { env, encoding: 'utf8' });
+  const removed = spawnSync('/bin/sh', [path.join(repo, 'uninstall.sh'), '--no-shell-integration', '--codex-home', home], { env, encoding: 'utf8' });
   assert.equal(removed.status, 0, removed.stderr);
   assert.equal(fs.existsSync(path.join(home, 'notdex')), false);
 });

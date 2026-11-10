@@ -17,7 +17,7 @@ function Assert-True($Condition, [string]$Message) {
 }
 function Invoke-Setup([string]$Script, [string]$Directory, [string]$Node = $NodePath, [switch]$Fail, [switch]$UseEnvironment) {
     $ScriptFile = Join-Path $RepoRoot $Script
-    $Arguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$ScriptFile)
+    $Arguments = @('-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',$ScriptFile,'-NoShellIntegration')
     if (-not $UseEnvironment) { $Arguments += @('-CodexHome',$Directory) }
     if ($Script -eq 'install.ps1') { $Arguments += @('-NodePath',$Node) }
     $Preference = $ErrorActionPreference

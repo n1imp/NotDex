@@ -5,10 +5,12 @@ const { spawnSync } = require('node:child_process');
 const { findExecutable } = require('../src/desktop.cjs');
 const { prepareMcpConfig, parse: parseToml } = require('./mcp-config.cjs');
 const { dependencyFiles, installDependencies, removeOwnedTree } = require('./dependencies.cjs');
+const { prepareHooks } = require('./hooks-config.cjs');
+const { realEnvironment } = require('../src/cli.cjs');
 
 const runtimeFiles = ['THIRD_PARTY_NOTICES.txt', 'notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
-  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs'];
-const ownedFiles = [...runtimeFiles, 'node-path.txt'];
+  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs', 'cli.cjs'];
+const ownedFiles = [...runtimeFiles, 'node-path.txt', 'codex-target.json'];
 const repo = path.dirname(__dirname);
 
 function entry(file) {
@@ -54,6 +56,7 @@ function manifest(directory) {
     throw new Error('Unrecognized NotDex command ownership: ' + file);
   }
   if (value.owned_mcp_blocks !== undefined && (!Array.isArray(value.owned_mcp_blocks) || value.owned_mcp_blocks.some(block => typeof block !== 'string'))) throw new Error('Unrecognized MCP configuration ownership: ' + file);
+  if (value.owned_hook_blocks !== undefined && (!Array.isArray(value.owned_hook_blocks) || value.owned_hook_blocks.some(block => typeof block !== 'string'))) throw new Error('Unrecognized inline hook ownership: ' + file);
   return value;
 }
 function ownership(previous, command) {
@@ -117,40 +120,69 @@ function defaults(options) {
 }
 function install(input = {}) {
   const options = defaults(input);
-  prerequisites(options);
   const home = resolveHome(options);
+  options.env = realEnvironment(options.env, path.join(home, 'notdex/bin'), options.platform);
+  if (!input.find) options.find = name => findExecutable(name, options.env, options.platform);
+  prerequisites(options);
   assertPath(home, true);
   const directory = path.join(home, 'notdex');
   const previous = manifest(directory);
   const hooksFile = path.join(home, 'hooks.json');
   const config = readJson(hooksFile);
+  const hooksBefore = entry(hooksFile) ? fs.readFileSync(hooksFile, 'utf8') : null;
   const commands = ownership(previous);
+  const handlers = {};
   for (const [event, name] of [['Stop', 'stop'], ['UserPromptSubmit', 'prompt']]) {
     const input = { event: name, session_id: '${session_id}', turn_id: '${turn_id}', transcript_path: '${transcript_path}', cwd: '${cwd}', model: '${model}' };
     if (name === 'stop') input.last_assistant_message = '${last_assistant_message}';
-    updateHooks(config, commands, { type: 'mcp_tool', server: 'notdex', tool: 'notdex_event', input, timeout: 5, statusMessage: 'NotDex' }, event, previous?.format_version === 2);
+    handlers[event] = [{ hooks: [{ type: 'mcp_tool', server: 'notdex', tool: 'notdex_event', input, timeout: 5, statusMessage: 'NotDex' }] }];
   }
   // An explicit global opt-out must not become a silently nonfunctional installation.
   const toml = path.join(home, 'config.toml');
   const tomlBefore = assertPath(toml) ? fs.readFileSync(toml, 'utf8') : '';
   if (parseToml(tomlBefore).features?.hooks === false) throw new Error('Enable hooks in Codex first. config.toml is preserved.');
-  const mcp = prepareMcpConfig(tomlBefore, { directory, nodePath: process.execPath, ownedBlocks: previous?.owned_mcp_blocks });
+  const owns = item => item && item.statusMessage === 'NotDex' && (commands.includes(item.command) || previous?.format_version === 2 && item.type === 'mcp_tool' && item.server === 'notdex' && item.tool === 'notdex_event');
+  const hookPlan = prepareHooks(tomlBefore, config, { owns, ownedBlocks: previous?.owned_hook_blocks, handlers });
+  if (!hookPlan.inline) for (const event of Object.keys(handlers)) updateHooks(config, commands, handlers[event][0].hooks[0], event, previous?.format_version === 2);
+  const mcp = prepareMcpConfig(hookPlan.text, { directory, nodePath: process.execPath, ownedBlocks: previous?.owned_mcp_blocks });
   const modules = path.join(directory, 'node_modules');
   if (assertPath(modules, true) && !previous?.owns_dependencies) throw new Error('Existing dependencies do not belong to NotDex: ' + modules);
   const dependencies = dependencyFiles();
+  const bin = path.join(directory, 'bin');
+  if (assertPath(bin, true) && !previous?.owns_cli) throw Error('Existing CLI directory is not owned by NotDex.');
+  for (const name of ['codex', 'codex.cmd', 'codex.ps1']) assertPath(path.join(bin, name));
   for (const name of [...ownedFiles, 'manifest.json']) assertPath(path.join(directory, name));
   const payloads = runtimeFiles.map(name => [name, fs.readFileSync(path.join(repo, 'src', name))]);
   fs.mkdirSync(directory, { recursive: true });
   // Retain prior ownership so a failed hooks write can be retried or uninstalled safely.
   const next = { app: 'NotDex', format_version: 2, hook_server: 'notdex', hook_tool: 'notdex_event', owned_commands: commands,
-    owned_mcp_blocks: [...new Set([mcp.block, ...(previous?.owned_mcp_blocks || [])])], owns_dependencies: true, dependency_hash: previous?.dependency_hash };
+    owned_mcp_blocks: [...new Set([mcp.block, ...(previous?.owned_mcp_blocks || [])])],
+    owned_hook_blocks: [...new Set([hookPlan.block, ...(previous?.owned_hook_blocks || [])].filter(Boolean))],
+    owns_cli: true, owns_dependencies: true, dependency_hash: previous?.dependency_hash };
   writeJson(path.join(directory, 'manifest.json'), next);
   for (const [name, data] of payloads) atomicWrite(path.join(directory, name), data);
   atomicWrite(path.join(directory, 'node-path.txt'), process.execPath);
+  writeJson(path.join(directory, 'codex-target.json'), { path: options.find('codex') });
+  fs.mkdirSync(bin, { recursive: true });
+  const cli = path.join(directory, 'cli.cjs');
+  if (options.platform === 'win32') {
+    atomicWrite(path.join(bin, 'codex.cmd'), '@echo off\r\nsetlocal DisableDelayedExpansion\r\n"' + process.execPath.replace(/%/g, '%%') + '" --no-warnings "' + cli.replace(/%/g, '%%') + '" %*\r\nexit /b %errorlevel%\r\n');
+    atomicWrite(path.join(bin, 'codex.ps1'), "\ufeff& '" + process.execPath.replace(/'/g, "''") + "' --no-warnings '" + cli.replace(/'/g, "''") + "' @args\nexit $LASTEXITCODE\n");
+  } else {
+    const shim = path.join(bin, 'codex');
+    atomicWrite(shim, '#!/bin/sh\nexec ' + quoteShell(process.execPath) + ' --no-warnings ' + quoteShell(cli) + ' "$@"\n');
+    fs.chmodSync(shim, 0o700);
+  }
   installDependencies(directory, dependencies);
   if ((entry(toml) ? fs.readFileSync(toml, 'utf8') : '') !== tomlBefore) throw new Error('config.toml changed during installation; retry after reviewing it.');
   atomicWrite(toml, mcp.text);
-  writeJson(hooksFile, config);
+  if ((entry(hooksFile) ? fs.readFileSync(hooksFile, 'utf8') : null) !== hooksBefore) throw Error('hooks.json changed during installation; review and retry.');
+  if (hookPlan.inline) {
+    if (hooksBefore !== null) {
+      fs.writeFileSync(path.join(directory, 'hooks-backup-' + require('node:crypto').randomUUID() + '.json'), hooksBefore, { flag: 'wx', mode: 0o600 });
+      fs.unlinkSync(hooksFile);
+    }
+  } else writeJson(hooksFile, config);
   next.dependency_hash = dependencies.hash;
   writeJson(path.join(directory, 'manifest.json'), next);
   return directory;
@@ -164,12 +196,19 @@ function uninstall(input = {}) {
   const hooksFile = path.join(home, 'hooks.json');
   const toml = path.join(home, 'config.toml');
   const tomlBefore = assertPath(toml) ? fs.readFileSync(toml, 'utf8') : '';
-  const mcp = previous.format_version === 2 ? prepareMcpConfig(tomlBefore, { ownedBlocks: previous.owned_mcp_blocks, remove: true }) : null;
+  const commands = ownership(previous);
+  const owns = item => item && item.statusMessage === 'NotDex' && (commands.includes(item.command) || previous.format_version === 2 && item.type === 'mcp_tool' && item.server === 'notdex' && item.tool === 'notdex_event');
+  const hookPlan = prepareHooks(tomlBefore, null, { owns, ownedBlocks: previous.owned_hook_blocks, remove: true });
+  const mcp = previous.format_version === 2 ? prepareMcpConfig(hookPlan.text, { ownedBlocks: previous.owned_mcp_blocks, remove: true }) : null;
   const hooks = entry(hooksFile) ? readJson(hooksFile) : null;
   if (hooks) for (const event of ['Stop', 'UserPromptSubmit']) updateHooks(hooks, ownership(previous), undefined, event, previous.format_version === 2);
   if (previous.owns_dependencies) assertPath(path.join(directory, 'node_modules'), true);
   if (mcp && mcp.text !== tomlBefore) atomicWrite(toml, mcp.text);
   if (hooks) writeJson(hooksFile, hooks);
+  if (previous.owns_cli && assertPath(path.join(directory, 'bin'), true)) {
+    for (const name of ['codex', 'codex.cmd', 'codex.ps1']) { const file = path.join(directory, 'bin', name); if (assertPath(file)) fs.unlinkSync(file); }
+    if (!fs.readdirSync(path.join(directory, 'bin')).length) fs.rmdirSync(path.join(directory, 'bin'));
+  }
   // Only fixed owned files may be removed; never recursively delete a profile.
   for (const name of ownedFiles) {
     const file = path.join(directory, name);
@@ -189,13 +228,21 @@ function main(action) {
       const argument = process.argv[i];
       if (argument === '--codex-home' && process.argv[i + 1]) options.codexHome = process.argv[++i];
       else if (argument === '--no-download') continue;
+      else if (argument === '--no-shell-integration') options.noShellIntegration = true;
       else if (argument === '--help') { console.log('NotDex: ' + action + ' [--codex-home PATH]. Desktop integration; review NotDex once in Codex /hooks.'); return; }
       else throw new Error('Unknown or incomplete option: ' + argument);
     }
     if (action === 'install') {
-      console.log('NotDex installed: ' + install(options));
+      const directory = install(options);
+      if (!options.noShellIntegration) require('./shell-integration.cjs').activate(directory);
+      console.log('NotDex installed: ' + directory);
+      if (!options.noShellIntegration) console.log('Open a new terminal; interactive codex sessions now include the overlay.');
       console.log('Restart Codex and review/trust NotDex once in /hooks.');
-    } else console.log(uninstall(options) ? 'NotDex removed. Unrelated hooks preserved.' : 'NotDex is not installed.');
+    } else {
+      const directory = path.join(resolveHome(defaults(options)), 'notdex');
+      if (manifest(directory) && !options.noShellIntegration) require('./shell-integration.cjs').deactivate(directory);
+      console.log(uninstall(options) ? 'NotDex removed. Unrelated hooks preserved.' : 'NotDex is not installed.');
+    }
   } catch (error) { console.error('NotDex: ' + error.message); process.exitCode = 1; }
 }
 module.exports = { install, uninstall, makeHookCommand, main };
