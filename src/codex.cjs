@@ -3,7 +3,7 @@ const path = require('node:path');
 const { findExecutable } = require('./desktop.cjs');
 
 function resolveCodex(selected, env = process.env) {
-  const found = selected ? path.resolve(selected) : findExecutable('codex', env);
+  const found = selected ? path.resolve(selected) : findExecutable('codex', realEnvironment(env, path.join(__dirname, 'bin')));
   if (!found) throw Error('Codex CLI was not found. Install Codex 0.167.0+ and add it to PATH.');
   const file = fs.realpathSync(found);
   if (!fs.statSync(file).isFile()) throw Error('Codex path must point to a file.');
@@ -31,4 +31,14 @@ function resolveCodex(selected, env = process.env) {
   return { file: process.execPath, args: [script] };
 }
 
-module.exports = { resolveCodex };
+function realEnvironment(env, bin, platform = process.platform) {
+  const windows = platform === 'win32', separator = windows ? ';' : ':';
+  const normalize = value => windows ? value.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() : path.resolve(value);
+  const result = { ...env };
+  const value = env.PATH ?? env.Path ?? env.path ?? '';
+  for (const key of Object.keys(result)) if (key.toUpperCase() === 'PATH') delete result[key];
+  result.PATH = value.split(separator).filter(part => part && normalize(part.replace(/^"(.*)"$/, '$1')) !== normalize(bin)).join(separator);
+  return result;
+}
+
+module.exports = { resolveCodex, realEnvironment };

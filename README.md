@@ -9,33 +9,35 @@ Ao terminar um turno, copia a resposta final e mostra uma notificação com o t�
 ## Instalar
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.167.0+** instalado e disponível no PATH.
-2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.2/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.3/NotDex.zip) e **extraia toda a pasta**.
 3. Execute o instalador:
 
-| Sistema | Instalar | Abrir Codex com o painel |
+| Sistema | Instalar | Usar após instalar |
 | --- | --- | --- |
-| Windows 10/11 | Dois cliques em [Install.cmd](Install.cmd) | [NotDex.cmd](NotDex.cmd) |
-| macOS 13.5+ | [install.command](install.command), ou `sh install.sh` | [notdex.command](notdex.command), ou `sh notdex.sh` |
-| Linux com desktop | `sh install.sh` | `sh notdex.sh` |
+| Windows 10/11 | Dois cliques em [Install.cmd](Install.cmd) | Abra um terminal novo e rode `codex` |
+| macOS 13.5+ | [install.command](install.command), ou `sh install.sh` | Abra um terminal novo e rode `codex` |
+| Linux com desktop | `sh install.sh` | Abra um terminal novo e rode `codex` |
 
-4. Reinicie o Codex, abra **/hooks** e revise/confie nos dois hooks **NotDex**. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
+4. Abra um terminal novo, execute `codex`, abra **/hooks** e revise/confie nos dois hooks **NotDex**. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
 
 O ZIP inclui as dependências com versões e hashes fixados. O instalador reutiliza Node.js 24+ ou baixa uma cópia privada de nodejs.org, também com SHA-256 fixado. A instalação pelo ZIP não precisa de npm nem compilação. Linux pede consentimento antes de instalar ferramentas de desktop ausentes.
 
-Abra o launcher na pasta em que deseja trabalhar, usando um terminal. Abrir o atalho pelo gerenciador de arquivos pode selecionar a pasta do NotDex como diretório de trabalho. O comando habitual `codex` continua com clipboard e notificações; o painel exige o launcher NotDex.
+O instalador integra o painel ao comando habitual `codex`, inclusive `codex resume` e `codex fork`. Execute-o na pasta do projeto. O executável oficial permanece intacto. Comandos como `codex exec`, `app-server`, ajuda, versão e pipes seguem diretamente para o Codex, sem painel.
+
+Os atalhos NotDex continuam disponíveis. A integração cobre o CLI no terminal; não injeta um painel no app desktop, na extensão do VS Code nem em programas que chamem o executável oficial por caminho absoluto. Aliases ou funções `codex` definidos pelo usuário podem ter precedência sobre o PATH.
 
 Se um atalho baixado for bloqueado, revise a origem e use o comando equivalente na pasta extraída:
 
 ```powershell
 # Windows
 & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-.\NotDex.cmd
+codex
 ```
 
 ```sh
 # macOS ou Linux
 sh install.sh
-sh notdex.sh
+codex
 ```
 
 ## Usar o painel
@@ -80,6 +82,10 @@ Feche as sessões abertas pelo NotDex antes de atualizar, pois o sistema pode ma
 
 O instalador preserva configurações, hooks e aprovações alheias ao NotDex. Migra versões antigas para um servidor MCP residente e dois callbacks; reinicie e revise os novos hooks em **/hooks**. Não há alteração automática da confiança.
 
+Se já existem hooks inline no TOML, o instalador usa essa representação, migra as definições do JSON e guarda uma cópia privada em `CODEX_HOME/notdex/hooks-backup-*.json`. Assim evita o aviso de duas representações na mesma camada. Hooks migrados de terceiros permanecem ao desinstalar; definições ambíguas ou blocos gerenciados editados são rejeitados para revisão.
+
+A ativação adiciona somente um diretório próprio de comandos e blocos identificados nos arquivos de inicialização do shell. Windows cobre PowerShell 5/7 e o PATH do usuário; macOS/Linux cobrem Bash e Zsh. Feche e reabra o aplicativo de terminal ou VS Code se ele ainda herdar o PATH antigo. Caminhos de sistema com precedência ou shells não configurados podem exigir colocar `CODEX_HOME/notdex/bin` primeiro no PATH. A remoção retira as entradas gerenciadas e preserva edições posteriores do usuário.
+
 O runtime fica em `CODEX_HOME/notdex`, normalmente `~/.codex/notdex`. Preferências do painel e arquivos não gerenciados permanecem após a remoção. Cache privado do Node e pacotes Linux compartilhados também permanecem.
 
 ## Execução e privacidade
@@ -114,7 +120,7 @@ sh install.sh --codex-home '/caminho/Codex Home'
 CODEX_HOME='/caminho/Codex Home' sh notdex.sh
 ```
 
-`-NoDownload` no Windows e `--no-download --no-system-packages` no Unix impedem downloads e instalação de pacotes. `-NodePath` seleciona um Node existente no Windows. Quem já tem Node 24+ pode executar `node install.cjs`.
+`-NoDownload` no Windows e `--no-download --no-system-packages` no Unix impedem downloads e instalação de pacotes. `-NodePath` seleciona um Node existente no Windows. Quem já tem Node 24+ pode executar `node install.cjs`. Para uma instalação portátil sem alterar a inicialização dos shells, use `-NoShellIntegration` no PowerShell ou `--no-shell-integration` nos instaladores Node/Unix; nesse caso, abra pelo launcher NotDex.
 
 O cache privado fica em `%LOCALAPPDATA%/NotDex/runtime`, `~/Library/Caches/NotDex/runtime` ou `${XDG_CACHE_HOME:-~/.cache}/notdex/runtime`. `NOTDEX_CACHE_HOME` permite outro destino. Unix verifica propriedade, permissões, ausência de links privados e hash do Node antes de reutilizar o cache, inclusive offline. O Node encontrado no PATH é considerado escolhido pelo usuário.
 

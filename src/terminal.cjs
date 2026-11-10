@@ -30,7 +30,7 @@ function saveSettings(file, value) {
   } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
 }
 
-async function runTerminal({ codex, args = [], codexHome, input = process.stdin, output = process.stdout }) {
+async function runTerminal({ codex, args = [], codexHome, input = process.stdin, output = process.stdout, env: parentEnv = process.env }) {
   if (!input.isTTY || !output.isTTY) throw Error('Open NotDex in an interactive terminal. Use the normal Codex command for piped/noninteractive output.');
   const pty = require('@lydell/node-pty');
   const { Terminal } = require('@xterm/headless');
@@ -46,9 +46,9 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   const receiver = createEventReceiver({ token, onEvent: data => { if (monitor.attach(data)) monitor.tick().catch(() => {}); } });
   receiver.requestTimeout = 1500; receiver.headersTimeout = 1500;
   await new Promise((resolve, reject) => { receiver.once('error', reject); receiver.listen(0, '127.0.0.1', resolve); });
-  const env = { ...process.env, CODEX_HOME: root, TERM: process.env.TERM || 'xterm-256color',
+  const env = { ...parentEnv, CODEX_HOME: root, TERM: parentEnv.TERM || 'xterm-256color',
     NOTDEX_OVERLAY_ENDPOINT: 'http://127.0.0.1:' + receiver.address().port + '/event', NOTDEX_OVERLAY_TOKEN: token };
-  const account = new AccountClient(codex, { env: { ...process.env, CODEX_HOME: root } });
+  const account = new AccountClient(codex, { env: { ...parentEnv, CODEX_HOME: root } });
   let refreshing = false;
   const refresh = async () => {
     if (refreshing || stopped) return; refreshing = true;

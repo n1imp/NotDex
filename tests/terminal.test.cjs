@@ -5,10 +5,12 @@ const os = require('node:os');
 const path = require('node:path');
 const pty = require('@lydell/node-pty');
 const { Terminal } = require('@xterm/headless');
+const { install } = require('../scripts/setup.cjs');
+const { realEnvironment } = require('../src/codex.cjs');
 
 test('real PTY wrapper renders metrics, moves/switches/hides the overlay, resizes and forwards Codex input', { timeout: 45000 }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'notdex-terminal-'));
-  fs.mkdirSync(path.join(root, 'sessions')); fs.mkdirSync(path.join(root, 'notdex'));
+  fs.mkdirSync(path.join(root, 'sessions'));
   const transcript = path.join(root, 'sessions/fixture.jsonl');
   fs.writeFileSync(transcript, [
     { type: 'turn_context', payload: { turn_id: 't', model: 'gpt-6.1-sol' } },
@@ -30,10 +32,11 @@ if(process.argv.includes('app-server')){
 }
 `);
   const screen = new Terminal({ cols: 100, rows: 24, allowProposedApi: true });
-  const inputAudit = path.join(root, 'synthetic-input.txt'), wrapper = path.join(root, 'wrapper.cjs');
-  fs.writeFileSync(wrapper, `process.stdin.on('data',data=>require('node:fs').appendFileSync(${JSON.stringify(inputAudit)},Buffer.from(data).toString('hex')+'\\n'));require(${JSON.stringify(path.resolve(__dirname, '../src/terminal.cjs'))}).main();`);
-  const child = pty.spawn(process.execPath, [wrapper, '--codex', fixture, '--codex-home', root], {
-    cols: 100, rows: 24, cwd: root, env: { ...process.env, TERM: 'xterm-256color' }
+  install({ codexHome: root, env: { ...process.env, DISPLAY: ':fixture' }, find: () => fixture, run: () => ({ status: 0, stdout: 'codex-cli 0.167.0' }) });
+  const windows = process.platform === 'win32';
+  const shell = windows ? path.join(process.env.SystemRoot, 'System32/cmd.exe') : '/bin/sh';
+  const child = pty.spawn(shell, windows ? ['/d', '/c', 'codex'] : ['-c', 'exec codex'], {
+    cols: 100, rows: 24, cwd: root, env: { ...realEnvironment(process.env, path.join(root, 'notdex/bin')), PATH: path.join(root, 'notdex/bin'), TERM: 'xterm-256color', CODEX_HOME: root }
   });
   let exited = false, code;
   const exit = new Promise(resolve => child.onExit(result => { exited = true; code = result.exitCode; resolve(); }));
@@ -43,7 +46,7 @@ if(process.argv.includes('app-server')){
   const lines = () => Array.from({ length: screen.rows }, (_, i) => screen.buffer.active.getLine(screen.buffer.active.baseY + i)?.translateToString() || '');
   const wait = async condition => {
     for (let i = 0; i < 300; i++) { if (condition()) return; if (exited) break; await new Promise(resolve => setTimeout(resolve, 50)); }
-    assert.fail('Terminal condition not reached: ' + lines().join('\n') + '\nSynthetic input hex: ' + (fs.existsSync(inputAudit) ? fs.readFileSync(inputAudit, 'utf8') : 'none'));
+    assert.fail('Terminal condition not reached: ' + lines().join('\n') + '\nOutput tail: ' + outputTail);
   };
   await wait(() => lines().some(line => line.includes('Total 110')) && lines().some(line => line.includes('Conta plus')));
   assert(lines()[0].indexOf('NotDex') > 50);
