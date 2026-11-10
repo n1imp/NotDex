@@ -80,7 +80,7 @@ for (const alternate of [false, true]) test(`compositor restores covered Codex c
   const source = new Terminal({ cols: 100, rows: 20, allowProposedApi: true });
   const output = new Terminal({ cols: 100, rows: 20, allowProposedApi: true });
   const serialize = new SerializeAddon(); source.loadAddon(serialize);
-  await write(source, (alternate ? '\x1b[?1049h' : '') + '\x1b[H' + 'original-content'.padEnd(100, 'x') + '\x1b[12;1HCodex input: ');
+  await write(source, (alternate ? '\x1b[?1049h' : '') + '\x1b[H' + 'original-content'.padEnd(100, 'x') + '\x1b[3;1H' + '漢字 e\u0301 🦊 '.repeat(15) + '\x1b[12;1HCodex input: ');
   const state = new OverlayState();
   await write(output, composeFrame(source, serialize, state, {}));
   assert(output.buffer.active.getLine(0).translateToString().includes('NotDex'));

@@ -129,7 +129,11 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
         return true;
       });
       child.onData(data => { if (!stopped) virtual.write(data, schedule); });
-      child.on('error', error => { try { child.kill(); } catch {} cleanup(1, error); });
+      child.on('error', error => {
+        // Unix PTYs report EIO when the slave closes; onExit carries the real status.
+        if (process.platform !== 'win32' && error.code === 'EIO') return;
+        try { child.kill(); } catch {} cleanup(1, error);
+      });
       child.onExit(({ exitCode, signal }) => {
         // Explicitly release node-pty's Windows conout worker after the child exits.
         if (process.platform === 'win32') { try { child.kill(); } catch {} }
