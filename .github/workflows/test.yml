@@ -24,4 +24,6 @@ jobs:
         with:
           node-version: '24'
       - name: Test metrics, installation lifecycle and native adapters
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run deterministic and native PTY tests
         run: node --no-warnings test.cjs

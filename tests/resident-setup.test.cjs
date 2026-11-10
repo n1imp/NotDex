@@ -33,6 +33,10 @@ test('resident installation uses MCP for Stop and prompt, retains unrelated conf
   }
   const runtime = path.join(home, 'notdex');
   assert(fs.existsSync(path.join(runtime, 'node_modules/@xterm/headless/package.json')));
+  const dependency = path.join(runtime, 'node_modules/@xterm/headless/package.json');
+  fs.unlinkSync(dependency);
+  install(options);
+  assert.equal(JSON.parse(fs.readFileSync(dependency, 'utf8')).version, '6.0.0');
   fs.writeFileSync(path.join(runtime, 'overlay-settings.json'), '{"x":4}');
   uninstall(options);
   assert.equal(fs.readFileSync(path.join(home, 'config.toml'), 'utf8'), original);

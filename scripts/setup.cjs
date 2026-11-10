@@ -147,7 +147,7 @@ function install(input = {}) {
   writeJson(path.join(directory, 'manifest.json'), next);
   for (const [name, data] of payloads) atomicWrite(path.join(directory, name), data);
   atomicWrite(path.join(directory, 'node-path.txt'), process.execPath);
-  if (!entry(modules) || previous?.dependency_hash !== dependencies.hash) installDependencies(directory, dependencies);
+  installDependencies(directory, dependencies);
   if ((entry(toml) ? fs.readFileSync(toml, 'utf8') : '') !== tomlBefore) throw new Error('config.toml changed during installation; retry after reviewing it.');
   atomicWrite(toml, mcp.text);
   writeJson(hooksFile, config);
