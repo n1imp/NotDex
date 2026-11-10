@@ -2,11 +2,23 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { findExecutable } = require('./desktop.cjs');
 
-function resolveCodex(selected, env = process.env) {
+function resolveCodex(selected, env = process.env, seen = new Set()) {
   const found = selected ? path.resolve(selected) : findExecutable('codex', realEnvironment(env, path.join(__dirname, 'bin')));
   if (!found) throw Error('Codex CLI was not found. Install Codex 0.167.0+ and add it to PATH.');
   const file = fs.realpathSync(found);
   if (!fs.statSync(file).isFile()) throw Error('Codex path must point to a file.');
+  if (seen.has(file) || seen.size >= 8) throw Error('Recursive Codex launcher configuration; reinstall with the official Codex on PATH.');
+  seen.add(file);
+  if (path.basename(path.dirname(file)) === 'bin') {
+    const directory = path.dirname(path.dirname(file));
+    let owner;
+    try { owner = JSON.parse(fs.readFileSync(path.join(directory, 'manifest.json'), 'utf8')); } catch {}
+    if (owner?.app === 'NotDex' && owner.format_version === 2 && owner.owns_cli === true) {
+      const target = JSON.parse(fs.readFileSync(path.join(directory, 'codex-target.json'), 'utf8'));
+      if (typeof target.path !== 'string' || !path.isAbsolute(target.path)) throw Error('Invalid managed Codex target.');
+      return resolveCodex(target.path, realEnvironment(env, path.dirname(file)), seen);
+    }
+  }
   let script = /\.[cm]?js$/i.test(file) ? file : null;
   if (/\.(cmd|ps1|bat)$/i.test(file)) {
     const candidate = path.join(path.dirname(file), 'node_modules/@openai/codex/bin/codex.js');
