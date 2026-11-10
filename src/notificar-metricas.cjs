@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
+const { MetricsAccumulator } = require('./observability.cjs');
 
 async function getSessionMetrics(data) {
   const result = {
@@ -41,49 +42,24 @@ async function getSessionMetrics(data) {
   }
   result.title ||= 'Codex';
 
-  let usage = null;
-  let start = null;
-  let activeTurn = null;
-  const number = value => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+  const metrics = new MetricsAccumulator({ sessionId: data.session_id });
   try {
     const lines = readline.createInterface({ input: fs.createReadStream(transcript), crlfDelay: Infinity });
     for await (const line of lines) {
-      if (!/"(?:token_count|token_usage_record|task_started|task_complete)"/.test(line)) continue;
-      let event;
-      try { event = JSON.parse(line); } catch { continue; }
-      const payload = event.payload || {};
-      let candidate = null;
-      if (event.type === 'token_usage_record' && (!payload.thread_id || payload.thread_id === data.session_id)) {
-        candidate = payload.thread_token_usage;
-      } else if (event.type === 'event_msg' && payload.type === 'token_count') {
-        candidate = payload.info?.total_token_usage;
-      }
-      if (candidate && (number(candidate.input_tokens) !== null || number(candidate.output_tokens) !== null)) usage = candidate;
-      if (event.type !== 'event_msg' || (data.turn_id && payload.turn_id !== data.turn_id)) continue;
-      if (payload.type === 'task_started') {
-        const timestamp = Date.parse(event.timestamp);
-        start = Number.isFinite(timestamp) ? timestamp : number(payload.started_at) === null ? null : payload.started_at * 1000;
-        activeTurn = payload.turn_id;
-        result.latency_ms = null;
-      } else if (payload.type === 'task_complete' && (!activeTurn || !payload.turn_id || payload.turn_id === activeTurn)) {
-        const end = Date.parse(event.timestamp);
-        result.latency_ms = number(payload.duration_ms);
-        if (result.latency_ms === null && start !== null && Number.isFinite(end) && end >= start) result.latency_ms = end - start;
-      }
+      if (!/"(?:token_count|token_usage_record|task_started|task_complete|turn_context|session_meta)"/.test(line)) continue;
+      try { metrics.consume(JSON.parse(line)); } catch {}
     }
   } catch {}
-  for (const field of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'total_tokens']) result[field] = number(usage?.[field]);
-  if (result.total_tokens === null && result.input_tokens !== null && result.output_tokens !== null) {
-    result.total_tokens = result.input_tokens + result.output_tokens;
+  const snapshot = metrics.snapshot({ turnId: data.turn_id || undefined, now: data.observed_at });
+  const scope = ['session', 'turn', 'request'].includes(data.scope) ? data.scope : 'session';
+  Object.assign(result, snapshot[scope]);
+  if (scope === 'session') {
+    result.latency_ms = snapshot.turn.latency_ms;
+    result.latency_is_estimate = snapshot.turn.latency_is_estimate;
   }
-  if (result.input_tokens > 0 && result.cached_input_tokens !== null && result.cached_input_tokens <= result.input_tokens) {
-    result.cache_hit_pct = 100 * result.cached_input_tokens / result.input_tokens;
-  }
-  const observed = Date.parse(data.observed_at);
-  if (result.latency_ms === null && start !== null && Number.isFinite(observed) && observed >= start) {
-    result.latency_ms = observed - start;
-    result.latency_is_estimate = true;
-  }
+  Object.assign(result, { scopes: { session: snapshot.session, turn: snapshot.turn, request: snapshot.request },
+    plan: snapshot.plan, quota: snapshot.quota, pricing_source: snapshot.pricing_source, pricing_date: snapshot.pricing_date });
+
   return result;
 }
 
