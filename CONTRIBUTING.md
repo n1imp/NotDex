@@ -19,10 +19,11 @@ git switch -c fix/minha-correcao
 5. Com Node.js 24+, execute:
 
 ```sh
+npm ci --ignore-scripts --no-audit --no-fund
 node --no-warnings test.cjs
 ```
 
-Não há dependências npm. Windows também usa PowerShell 5.1 nos testes. Os testes usam perfis temporários e ferramentas de desktop simuladas; executar a suíte não instala o NotDex no seu perfil pessoal.
+As dependências têm versões e integridade fixadas em `package-lock.json`; nenhum script de instalação é executado. Windows também usa PowerShell 5.1 nos testes. Os testes usam perfis temporários, ferramentas de desktop simuladas e PTY nativo; executar a suíte não instala o NotDex no seu perfil pessoal.
 
 6. Envie a branch ao seu fork e abra um pull request para `main` no repositório original:
 
@@ -37,11 +38,13 @@ Informe o problema, a mudança e os testes executados. O CI testa Windows, macOS
 ## Preservar o comportamento
 
 - O hook deve terminar com código zero mesmo se clipboard, áudio ou notificação falharem.
-- Som e notificação ficam no worker separado; evite aumentar o trabalho antes de iniciar o worker.
+- Confirme o callback MCP antes do trabalho do worker. Clipboard, som e notificação não podem bloquear o transporte MCP.
 - Copie somente a resposta final; não exiba conteúdo da conversa na notificação.
 - Preserve outros hooks, configurações e arquivos do usuário na instalação e remoção.
 - Use fixtures sintéticas. Não publique credenciais, bancos locais, transcripts completos ou respostas privadas.
 - Documente as plataformas realmente testadas. Uma suíte verde não comprova banners, permissões ou som num desktop real.
+- Métricas precisam de registros reais ou fixtures equivalentes. Mostre `N/D` quando faltarem dados; US$ de referência não é cobrança da assinatura e quota da conta não é quota de um chat.
+- Preserve a entrada e a restauração do terminal. Atalhos do painel só interceptam teclas documentadas, fora de texto colado.
 - Código, dependências e assets adicionados devem ter licença compatível com a [MIT](LICENSE). Preserve avisos de terceiros quando necessários.
 
 ## Atualizar a branch de trabalho
@@ -74,6 +77,6 @@ Substitua a versão do exemplo pela versão escolhida. Não mova nem reutilize t
 
 O [workflow de release](.github/workflows/release.yml) repete os testes nos três sistemas. Só depois publica `NotDex.zip` e `SHA256SUMS.txt`. Tags com hífen geram prévias; tags como `v0.2.0` geram releases regulares. Apenas pessoas com permissão para enviar tags ao repositório original podem disparar essa publicação.
 
-O ZIP inclui instaladores, runtime, README e LICENSE. Testes, modelos do GitHub e este guia ficam fora da distribuição de instalação. O Node privado é obtido diretamente de nodejs.org e não é empacotado no ZIP.
+O ZIP inclui instaladores, runtime, dependências com licenças, README e LICENSE. O workflow verifica os hashes dos seis pacotes nativos x64/ARM64 de Windows, macOS e Linux antes de incluí-los; a instalação pelo ZIP não pode depender de npm. Testes, modelos do GitHub e este guia ficam fora da distribuição. O Node privado é obtido diretamente de nodejs.org e não é empacotado.
 
 Ao atualizar a versão do Node, atualize `scripts/node-version.txt` e `scripts/node-shasums.txt`. Para cada plataforma Unix, registre o SHA-256 do arquivo `.tar.gz` e do executável `bin/node`. Confira primeiro o arquivo contra os checksums oficiais de nodejs.org; só então extraia e calcule o hash do executável, sem executá-lo. Valide os testes de bootstrap nos três sistemas.

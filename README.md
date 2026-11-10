@@ -1,98 +1,125 @@
 # NotDex
 
-Clipboard automático e notificações com métricas para o **Codex CLI**, em Windows, macOS e Linux desktop.
+Clipboard automático, notificações e observabilidade no próprio terminal do **Codex CLI**, em Windows, macOS e Linux desktop.
 
-Ao concluir um turno, o NotDex copia a resposta final e mostra o título da sessão, total de tokens, input, output, percentual de cache e latência. A resposta não aparece na notificação.
+Ao terminar um turno, copia a resposta final e mostra uma notificação com o título da sessão e **métricas daquele turno**. O conteúdo da resposta não aparece na notificação. O painel permite alternar entre turno, última requisição e sessão, sem usar um modelo para calcular os dados.
 
-**Prévia experimental:** alguns desktops Linux não reproduzem o som. macOS ainda não teve validação visual e sonora nativa.
+**Prévia experimental:** testes automatizados cobrem os três sistemas; apresentação e som dependem do desktop. macOS ainda precisa de validação visual e sonora numa máquina real.
 
-## Instalar em poucos passos
+## Instalar
 
-1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.166.0+** instalado e disponível no PATH.
-2. [Baixe o NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.1.0-preview.5/NotDex.zip) e **extraia toda a pasta**.
-3. Abra o instalador do seu sistema:
+1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.167.0+** instalado e disponível no PATH.
+2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.1/NotDex.zip) e **extraia toda a pasta**.
+3. Execute o instalador:
 
-| Sistema | Instalador |
-| --- | --- |
-| Windows 10/11 | Dois cliques em [Install.cmd](Install.cmd). |
-| macOS 13.5+ | Abra [install.command](install.command), ou rode `sh install.sh` no Terminal. |
-| Linux com desktop | Abra um terminal na pasta extraída e rode `sh install.sh`. |
+| Sistema | Instalar | Abrir Codex com o painel |
+| --- | --- | --- |
+| Windows 10/11 | Dois cliques em [Install.cmd](Install.cmd) | [NotDex.cmd](NotDex.cmd) |
+| macOS 13.5+ | [install.command](install.command), ou `sh install.sh` | [notdex.command](notdex.command), ou `sh notdex.sh` |
+| Linux com desktop | `sh install.sh` | `sh notdex.sh` |
 
-4. Reinicie o Codex, abra **/hooks** e revise/confie no hook **NotDex** uma vez. Essa aprovação faz parte da [política de hooks do Codex](https://developers.openai.com/codex/hooks/).
+4. Reinicie o Codex, abra **/hooks** e revise/confie nos dois hooks **NotDex**. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
 
-O instalador reutiliza Node.js 24+ ou baixa uma cópia privada de nodejs.org, com versão e SHA-256 fixados. Não é necessário instalar pacotes npm. No Linux, solicita consentimento antes de instalar ferramentas de desktop ausentes.
+O ZIP inclui as dependências com versões e hashes fixados. O instalador reutiliza Node.js 24+ ou baixa uma cópia privada de nodejs.org, também com SHA-256 fixado. A instalação pelo ZIP não precisa de npm nem compilação. Linux pede consentimento antes de instalar ferramentas de desktop ausentes.
 
-Se um atalho baixado for bloqueado, revise a origem e use o comando equivalente dentro da pasta extraída:
+Abra o launcher na pasta em que deseja trabalhar, usando um terminal. Abrir o atalho pelo gerenciador de arquivos pode selecionar a pasta do NotDex como diretório de trabalho. O comando habitual `codex` continua com clipboard e notificações; o painel exige o launcher NotDex.
+
+Se um atalho baixado for bloqueado, revise a origem e use o comando equivalente na pasta extraída:
 
 ```powershell
 # Windows
 & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+.\NotDex.cmd
 ```
 
 ```sh
 # macOS ou Linux
 sh install.sh
+sh notdex.sh
 ```
 
-## Desinstalar ou atualizar
+## Usar o painel
 
-- **Windows:** abra [Uninstall.cmd](Uninstall.cmd).
-- **macOS:** abra [uninstall.command](uninstall.command).
-- **macOS/Linux:** também pode executar `sh uninstall.sh` na pasta extraída.
-- **Atualizar pelo ZIP:** baixe a [versão mais recente](https://github.com/n1imp/NotDex/releases), extraia em uma pasta nova e execute seu instalador novamente. O hook gerenciado não é duplicado.
-- **Atualizar um clone:** rode `git pull --ff-only` e execute o instalador novamente. Somente atualizar os arquivos do clone não atualiza a cópia instalada no Codex.
+O painel começa no canto superior direito. Posição, visibilidade e escopo ficam salvos no perfil local.
 
-Outros hooks e configurações são preservados. O runtime fica em `CODEX_HOME/notdex`, por padrão `~/.codex/notdex`. O cache privado do Node e pacotes Linux compartilhados permanecem após desinstalar.
+| Tecla | Ação |
+| --- | --- |
+| **F12** | Abrir/fechar os controles; revelar um painel oculto |
+| **Setas**, com controles abertos | Mover dentro do terminal |
+| **Tab**, com controles abertos | Alternar turno, requisição e sessão |
+| **H**, com controles abertos | Ocultar |
+| **Esc**, com controles abertos | Encerrar o posicionamento |
 
-Ao atualizar de uma versão anterior à Preview 5, reinicie o Codex e revise/aprove novamente o NotDex em **/hooks**: o comando Windows mudou para um launcher Node com caminhos absolutos.
+O terminal precisa de pelo menos **52 colunas × 12 linhas**; em tamanhos menores, o painel fica oculto. No macOS, pode ser necessário **Fn+F12**. Um atalho reservado pelo terminal ou sistema precisa ser liberado pelo usuário.
 
-No Windows, o hook copia via `clip.exe` e inicia um worker Node oculto. Esse worker executa PowerShell 5.1 para consultar métricas, enviar o toast e reproduzir o som, nessa ordem. O hook termina sem esperar por essas tarefas nem compartilhar seus canais de saída. A inicialização fria do PowerShell fica fora do timeout de cinco segundos. O envio do toast precede o som; o Windows controla quando o banner aparece na tela.
+Quem tem Node 24+ no PATH pode encaminhar argumentos do Codex:
 
-## Requisitos e limites conhecidos
+```sh
+node notdex.cjs -- resume
+node notdex.cjs --codex-home '/caminho/Codex Home' -- resume
+```
 
-- Uma sessão gráfica local é necessária; SSH/headless não oferece este fluxo de clipboard e notificações.
-- Windows requer PowerShell 5.1. O launcher funciona nos shells CMD e PowerShell. O clipboard tem limite de 1,5 segundo; bloqueios do sistema ainda podem causar atraso. `exit 0` não impede o Codex de encerrar um processo por timeout.
-- macOS usa `pbcopy`, AppleScript e o som `Glass`. Permissões e apresentação ainda precisam de teste em um Mac real.
-- Linux usa `notify-send` e `wl-copy` em Wayland, ou `xclip`/`xsel` em X11. O instalador oferece dependências via apt-get, dnf, pacman ou zypper. O daemon decide se aceita o som solicitado; Xfce4 Notifyd 0.9.4 no Ubuntu testado exibiu o banner, mas ficou sem som.
-- O bootstrap cobre x64/ARM64 quando houver binário oficial compatível. Linux requer kernel 4.18+ e glibc 2.28+; musl x64 é experimental. Outras arquiteturas exigem Node.js 24+ compatível no PATH. Veja as [plataformas do Node 24](https://github.com/nodejs/node/blob/v24.22.2/BUILDING.md#platform-list).
-- O primeiro download requer internet; Unix também precisa de curl ou wget. Políticas administrativas ou hooks explicitamente desabilitados podem impedir a integração.
-- Se você já usa um hook de notificação manual, desative o antigo para evitar avisos duplicados. O Codex combina os hooks de `config.toml` e `hooks.json`; instalar o NotDex não desativa comandos manuais antigos.
-- Círculos coloridos são emojis; a aparência depende do sistema. Não há garantia de cópia abaixo de 50 ms.
+## De onde vêm as métricas
 
-## Métricas e privacidade
+- **Tokens:** registros locais do Codex, separados por sessão, turno e resposta. `token_usage_record` tem preferência; formatos antigos usam diferenças acumuladas somente quando existe uma base confiável. Replays do mesmo ID não somam o consumo novamente.
+- **Cache:** `cached_input_tokens / input_tokens × 100`. Cache e raciocínio não são somados outra vez ao total.
+- **Latência:** duração informada pelo Codex, ou intervalo entre início e fim do turno. `~` identifica um turno ainda em andamento; não representa tempo de rede isolado.
+- **US$ ref.std:** referência calculada com os [preços Standard da API](https://developers.openai.com/api/docs/pricing), tabela conferida em **2026-11-10**, por modelo e requisição, incluindo desconto de cache e faixa de contexto. **Não é a cobrança do plano ChatGPT.** Histórico incompleto, modelo desconhecido ou preço ambíguo produzem `N/D`.
+- **Conta e cotas:** plano e percentuais reais fornecidos pelo `codex app-server`, com atualização a cada 60 segundos e eventos locais de quota. O painel mostra a idade da amostra. As janelas, como 5 horas e semana, pertencem à **conta inteira**; não são a parcela consumida por este chat. A assinatura não fornece uma conversão confiável entre tokens, dólares e percentual do plano.
 
-**Total, input e output** são acumulados da sessão. **Cache** é `cached_input_tokens / input_tokens × 100`. **Lat. turno** usa a duração do turno; `~` identifica uma estimativa e `N/D` indica dados indisponíveis. Cache e raciocínio não são somados novamente ao total.
+`N/D` significa indisponível. O painel não estima o plano pelo e-mail, valor da assinatura ou quantidade de tokens. A notificação mostra **o último turno**, mesmo quando o painel está no escopo de sessão.
 
-O NotDex lê o índice, o banco local em modo somente leitura e o transcript informado pelo Codex. Formatos internos podem mudar. A resposta segue somente para o clipboard local; o worker recebe metadados. O runtime não envia telemetria nem faz chamadas de rede.
+## Atualizar ou remover
+
+Feche as sessões abertas pelo NotDex antes de atualizar, pois o sistema pode manter a biblioteca nativa do terminal em uso.
+
+- **Atualizar:** baixe o [ZIP mais recente](https://github.com/n1imp/NotDex/releases), extraia numa pasta nova e execute o instalador novamente. Não basta atualizar os arquivos do clone.
+- **Remover no Windows:** [Uninstall.cmd](Uninstall.cmd).
+- **Remover no macOS:** [uninstall.command](uninstall.command).
+- **Remover no macOS/Linux:** `sh uninstall.sh`.
+
+O instalador preserva configurações, hooks e aprovações alheias ao NotDex. Migra versões antigas para um servidor MCP residente e dois callbacks; reinicie e revise os novos hooks em **/hooks**. Não há alteração automática da confiança.
+
+O runtime fica em `CODEX_HOME/notdex`, normalmente `~/.codex/notdex`. Preferências do painel e arquivos não gerenciados permanecem após a remoção. Cache privado do Node e pacotes Linux compartilhados também permanecem.
+
+## Execução e privacidade
+
+O callback MCP confirma o evento antes de delegar o trabalho a um worker residente. Clipboard, consulta de métricas, notificação e som ficam fora desse caminho de confirmação. Isso remove a abertura de PowerShell por missão do prazo de cinco segundos. Outros hooks do usuário continuam com seus próprios limites.
+
+O worker recebe a resposta somente para copiá-la no clipboard. O painel recebe metadados por HTTP autenticado, limitado ao loopback, e acompanha o transcript local. O banco local é aberto somente para leitura. Nenhum conteúdo da conversa é enviado ao painel ou a um serviço externo. A consulta oficial de conta pode usar a rede; o NotDex não envia telemetria nem faz chamadas de geração a modelos.
+
+## Requisitos e limites
+
+- É necessária uma sessão gráfica local; clipboard e notificações não têm este fluxo em SSH/headless. O painel requer terminal interativo com cores e sequências VT.
+- **Windows:** PowerShell 5.1; som WAV do sistema, sem bipe de placa-mãe. O envio do toast precede o som; o Windows controla quando o banner aparece. Não há garantia de cópia em menos de 50 ms.
+- **macOS:** `pbcopy`, AppleScript e som `Glass`; permissões e apresentação precisam de verificação no desktop real.
+- **Linux:** `notify-send` e `wl-copy` em Wayland, ou `xclip`/`xsel` em X11. O instalador oferece dependências via apt-get, dnf, pacman ou zypper. O daemon decide se aceita o som; alguns exibem somente o banner.
+- Não perturbe, configurações de áudio e jogos em tela cheia exclusiva podem suprimir banner e som. O NotDex respeita essas políticas; não tenta sobrepor jogos como Roblox, Minecraft ou Fortnite.
+- Os binários de terminal incluídos cobrem **x64 e ARM64** de Windows, macOS e Linux. Linux requer glibc compatível com o binário distribuído; musl e outras arquiteturas não são cobertos pelo overlay nesta prévia.
+- O primeiro download do Node requer internet; Unix também precisa de curl ou wget. Políticas administrativas e hooks desabilitados podem impedir a integração.
+- Um hook manual antigo fora da propriedade do NotDex pode gerar avisos duplicados. Revise seus hooks se isso acontecer.
+- O PTY usa `@lydell/node-pty` **1.2.0-beta.18**, fixado por integridade. Essa versão inclui a correção necessária de encerramento do helper Windows; continua sendo uma dependência beta.
 
 ## Opções avançadas
 
-`CODEX_HOME` seleciona outro perfil. Também é possível informar o destino explicitamente:
+`CODEX_HOME` seleciona outro perfil. Use o mesmo destino ao instalar, abrir e remover:
 
 ```powershell
 & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -CodexHome 'D:\Codex Home'
+.\start.ps1 -CodexHome 'D:\Codex Home'
 ```
 
 ```sh
 sh install.sh --codex-home '/caminho/Codex Home'
+CODEX_HOME='/caminho/Codex Home' sh notdex.sh
 ```
 
-Use o mesmo destino ao iniciar o Codex e ao desinstalar. `-NoDownload` no Windows e `--no-download --no-system-packages` no Unix impedem downloads e instalação de pacotes. `-NodePath` seleciona um Node existente no Windows. Quem já tem Node 24+ pode executar `node install.cjs`.
+`-NoDownload` no Windows e `--no-download --no-system-packages` no Unix impedem downloads e instalação de pacotes. `-NodePath` seleciona um Node existente no Windows. Quem já tem Node 24+ pode executar `node install.cjs`.
 
-O cache privado fica em `%LOCALAPPDATA%/NotDex/runtime` no Windows, `~/Library/Caches/NotDex/runtime` no macOS e `${XDG_CACHE_HOME:-~/.cache}/notdex/runtime` no Linux. `NOTDEX_CACHE_HOME` permite outro destino.
+O cache privado fica em `%LOCALAPPDATA%/NotDex/runtime`, `~/Library/Caches/NotDex/runtime` ou `${XDG_CACHE_HOME:-~/.cache}/notdex/runtime`. `NOTDEX_CACHE_HOME` permite outro destino. Unix verifica propriedade, permissões, ausência de links privados e hash do Node antes de reutilizar o cache, inclusive offline. O Node encontrado no PATH é considerado escolhido pelo usuário.
 
-No macOS/Linux, o cache precisa pertencer ao usuário e não pode ser gravável por outros usuários nem usar links em seus diretórios privados. O executável é conferido por SHA-256 fixado antes da reutilização, inclusive offline. Um cache alterado é rejeitado ou substituído por um download verificado. O Node já disponível no PATH é considerado um interpretador escolhido pelo usuário; coloque-o novamente no PATH se ele tiver saído de lá desde a instalação.
+## Desenvolvimento e contribuição
 
-## Desenvolvimento
+Com Node 24+ e npm, execute `npm ci --ignore-scripts`, depois `npm test`. Os testes usam perfis temporários e fixtures; não instalam no perfil pessoal. O [CI](https://github.com/n1imp/NotDex/actions) valida Windows, macOS e Linux, incluindo PTY nativo. Testes automatizados não comprovam som audível, permissões ou aparência em cada desktop.
 
-O repositório inclui testes sintéticos e [CI em Windows/macOS/Linux](https://github.com/n1imp/NotDex/actions). Execute `node --no-warnings test.cjs` com Node 24+. O ZIP de instalação exclui testes, CI e documentos internos. Testes automatizados não comprovam permissão, aparência ou som em cada desktop.
-
-## Contribuir
-
-Sugestões e correções são bem-vindas por [issues](https://github.com/n1imp/NotDex/issues) e pull requests. Faça um fork, trabalhe em uma branch e siga o [guia de contribuição](https://github.com/n1imp/NotDex/blob/main/CONTRIBUTING.md). O CI valida pull requests nos três sistemas.
-
-Mantenedores publicam atualizações enviando uma nova tag de versão: o workflow testa os três sistemas e gera o ZIP com licença e SHA-256 automaticamente.
-
-## Licença
-
-[MIT](LICENSE). Permite uso, modificação e redistribuição, preservando o aviso de direitos autorais e a licença. Contribuições devem manter licenças compatíveis.
+Contribua por [issues](https://github.com/n1imp/NotDex/issues) e pull requests; consulte [CONTRIBUTING.md](CONTRIBUTING.md). O ZIP inclui runtime, dependências e suas licenças, instaladores, README e [MIT](LICENSE). Testes, CI e documentos internos ficam fora do pacote.

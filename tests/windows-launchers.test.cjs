@@ -33,7 +33,9 @@ Add-Type -TypeDefinition 'public class AuditMarker { public static void Main(str
     fs.copyFileSync(path.join(__dirname, '..', name + '.cmd'), path.join(root, name + '.cmd'));
     fs.writeFileSync(path.join(root, name.toLowerCase() + '.ps1'), trusted);
   }
-  const commands = { hook: makeHookCommand('win32', runtime), install: 'Install.cmd', uninstall: 'Uninstall.cmd' };
+  fs.copyFileSync(path.join(__dirname, '../NotDex.cmd'), path.join(root, 'NotDex.cmd'));
+  fs.writeFileSync(path.join(root, 'start.ps1'), trusted);
+  const commands = { hook: makeHookCommand('win32', runtime), install: 'Install.cmd', uninstall: 'Uninstall.cmd', overlay: 'NotDex.cmd' };
   for (const [name, command] of Object.entries(commands)) await t.test(name, () => {
     const marker = path.join(root, name + '.trusted');
     const fakeMarker = path.join(root, name + '.untrusted');

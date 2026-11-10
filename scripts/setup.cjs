@@ -3,8 +3,11 @@ const path = require('node:path');
 const os = require('node:os');
 const { spawnSync } = require('node:child_process');
 const { findExecutable } = require('../src/desktop.cjs');
+const { prepareMcpConfig, parse: parseToml } = require('./mcp-config.cjs');
+const { dependencyFiles, installDependencies, removeOwnedTree } = require('./dependencies.cjs');
 
-const runtimeFiles = ['notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs'];
+const runtimeFiles = ['notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
+  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs'];
 const ownedFiles = [...runtimeFiles, 'node-path.txt'];
 const repo = path.dirname(__dirname);
 
@@ -43,12 +46,14 @@ function manifest(directory) {
   const file = path.join(directory, 'manifest.json');
   if (!entry(file)) throw new Error('Existing directory does not belong to NotDex: ' + directory);
   const value = readJson(file);
-  if (value.app !== 'NotDex' || value.format_version !== 1 || typeof value.hook_command !== 'string' || !value.hook_command) {
+  if (value.app !== 'NotDex' || ![1, 2].includes(value.format_version) ||
+    (value.format_version === 1 ? typeof value.hook_command !== 'string' || !value.hook_command : value.hook_server !== 'notdex' || value.hook_tool !== 'notdex_event')) {
     throw new Error('Unrecognized NotDex manifest: ' + file);
   }
   if (value.owned_commands !== undefined && (!Array.isArray(value.owned_commands) || value.owned_commands.some(command => typeof command !== 'string'))) {
     throw new Error('Unrecognized NotDex command ownership: ' + file);
   }
+  if (value.owned_mcp_blocks !== undefined && (!Array.isArray(value.owned_mcp_blocks) || value.owned_mcp_blocks.some(block => typeof block !== 'string'))) throw new Error('Unrecognized MCP configuration ownership: ' + file);
   return value;
 }
 function ownership(previous, command) {
@@ -69,18 +74,19 @@ function makeHookCommand(platform, directory, nodePath = process.execPath) {
   }
   return quoteShell(nodePath) + ' --no-warnings ' + quoteShell(path.join(directory, 'notificar-unix.cjs'));
 }
-function updateHooks(config, commands, handler) {
+function updateHooks(config, commands, handler, event = 'Stop', ownsMcp = false) {
   config.hooks ??= {};
   if (!config.hooks || typeof config.hooks !== 'object' || Array.isArray(config.hooks)) throw new Error('hooks must be an object');
-  if (config.hooks.Stop !== undefined && !Array.isArray(config.hooks.Stop)) throw new Error('Stop must be an array');
+  if (config.hooks[event] !== undefined && !Array.isArray(config.hooks[event])) throw new Error(event + ' must be an array');
   const groups = [];
-  for (const group of config.hooks.Stop || []) {
+  for (const group of config.hooks[event] || []) {
     if (!group || typeof group !== 'object' || !Array.isArray(group.hooks)) throw new Error('Invalid Stop matcher group');
-    const kept = group.hooks.filter(item => !(item && item.statusMessage === 'NotDex' && commands.includes(item.command)));
+    const kept = group.hooks.filter(item => !(item && item.statusMessage === 'NotDex' &&
+      (commands.includes(item.command) || ownsMcp && item.type === 'mcp_tool' && item.server === 'notdex' && item.tool === 'notdex_event')));
     if (kept.length || kept.length === group.hooks.length) groups.push({ ...group, hooks: kept });
   }
   if (handler) groups.push({ hooks: [handler] });
-  config.hooks.Stop = groups;
+  config.hooks[event] = groups;
   return config;
 }
 function prerequisites(options) {
@@ -96,13 +102,13 @@ function prerequisites(options) {
     if (!clipboard || !find('notify-send')) throw new Error('Missing Linux desktop tools. Run install.sh to install a clipboard tool and notify-send with your approval.');
   }
   const codex = find('codex');
-  if (!codex) throw new Error('Install Codex CLI 0.166.0+ and add it to PATH first.');
+  if (!codex) throw new Error('Install Codex CLI 0.167.0+ and add it to PATH first.');
   const result = platform === 'win32' && /\.(cmd|bat)$/i.test(codex)
     ? run(systemPowerShell(), ['-NoProfile', '-NonInteractive', '-Command', '& $env:NOTDEX_CODEX_EXECUTABLE --version; exit $LASTEXITCODE'],
       { env: { ...env, NOTDEX_CODEX_EXECUTABLE: codex }, encoding: 'utf8', timeout: 15000, windowsHide: true })
     : run(codex, ['--version'], { env, encoding: 'utf8', timeout: 15000, windowsHide: true });
   const version = result.stdout?.match(/codex-cli (\d+)\.(\d+)\.(\d+)/);
-  if (result.status !== 0 || !version || (Number(version[1]) === 0 && Number(version[2]) < 166)) throw new Error('Codex CLI 0.166.0 or later is required.');
+  if (result.status !== 0 || !version || (Number(version[1]) === 0 && Number(version[2]) < 167)) throw new Error('Codex CLI 0.167.0 or later is required.');
 }
 function defaults(options) {
   const env = options.env || process.env;
@@ -118,26 +124,35 @@ function install(input = {}) {
   const previous = manifest(directory);
   const hooksFile = path.join(home, 'hooks.json');
   const config = readJson(hooksFile);
-  const command = makeHookCommand(options.platform, directory);
-  const commands = ownership(previous, command);
-  updateHooks(config, commands, { type: 'command', command, timeout: 5, statusMessage: 'NotDex' });
+  const commands = ownership(previous);
+  for (const [event, name] of [['Stop', 'stop'], ['UserPromptSubmit', 'prompt']]) {
+    const input = { event: name, session_id: '${session_id}', turn_id: '${turn_id}', transcript_path: '${transcript_path}', cwd: '${cwd}', model: '${model}' };
+    if (name === 'stop') input.last_assistant_message = '${last_assistant_message}';
+    updateHooks(config, commands, { type: 'mcp_tool', server: 'notdex', tool: 'notdex_event', input, timeout: 5, statusMessage: 'NotDex' }, event, previous?.format_version === 2);
+  }
   // An explicit global opt-out must not become a silently nonfunctional installation.
   const toml = path.join(home, 'config.toml');
-  if (fs.existsSync(toml)) {
-    let features = false;
-    for (const line of fs.readFileSync(toml, 'utf8').split(/\r?\n/)) {
-      if (/^\s*\[/.test(line)) features = /^\s*\[features\]\s*(?:#.*)?$/.test(line);
-      if (features && /^\s*hooks\s*=\s*false\s*(?:#.*)?$/.test(line)) throw new Error('Enable hooks in Codex first. config.toml is preserved.');
-    }
-  }
+  const tomlBefore = assertPath(toml) ? fs.readFileSync(toml, 'utf8') : '';
+  if (parseToml(tomlBefore).features?.hooks === false) throw new Error('Enable hooks in Codex first. config.toml is preserved.');
+  const mcp = prepareMcpConfig(tomlBefore, { directory, nodePath: process.execPath, ownedBlocks: previous?.owned_mcp_blocks });
+  const modules = path.join(directory, 'node_modules');
+  if (assertPath(modules, true) && !previous?.owns_dependencies) throw new Error('Existing dependencies do not belong to NotDex: ' + modules);
+  const dependencies = dependencyFiles();
   for (const name of [...ownedFiles, 'manifest.json']) assertPath(path.join(directory, name));
   const payloads = runtimeFiles.map(name => [name, fs.readFileSync(path.join(repo, 'src', name))]);
   fs.mkdirSync(directory, { recursive: true });
   // Retain prior ownership so a failed hooks write can be retried or uninstalled safely.
-  writeJson(path.join(directory, 'manifest.json'), { app: 'NotDex', format_version: 1, hook_command: command, owned_commands: commands });
+  const next = { app: 'NotDex', format_version: 2, hook_server: 'notdex', hook_tool: 'notdex_event', owned_commands: commands,
+    owned_mcp_blocks: [...new Set([mcp.block, ...(previous?.owned_mcp_blocks || [])])], owns_dependencies: true, dependency_hash: previous?.dependency_hash };
+  writeJson(path.join(directory, 'manifest.json'), next);
   for (const [name, data] of payloads) atomicWrite(path.join(directory, name), data);
   atomicWrite(path.join(directory, 'node-path.txt'), process.execPath);
+  installDependencies(directory, dependencies);
+  if ((entry(toml) ? fs.readFileSync(toml, 'utf8') : '') !== tomlBefore) throw new Error('config.toml changed during installation; retry after reviewing it.');
+  atomicWrite(toml, mcp.text);
   writeJson(hooksFile, config);
+  next.dependency_hash = dependencies.hash;
+  writeJson(path.join(directory, 'manifest.json'), next);
   return directory;
 }
 function uninstall(input = {}) {
@@ -147,12 +162,20 @@ function uninstall(input = {}) {
   const previous = manifest(directory);
   if (!previous) return false;
   const hooksFile = path.join(home, 'hooks.json');
-  if (entry(hooksFile)) writeJson(hooksFile, updateHooks(readJson(hooksFile), ownership(previous)));
+  const toml = path.join(home, 'config.toml');
+  const tomlBefore = assertPath(toml) ? fs.readFileSync(toml, 'utf8') : '';
+  const mcp = previous.format_version === 2 ? prepareMcpConfig(tomlBefore, { ownedBlocks: previous.owned_mcp_blocks, remove: true }) : null;
+  const hooks = entry(hooksFile) ? readJson(hooksFile) : null;
+  if (hooks) for (const event of ['Stop', 'UserPromptSubmit']) updateHooks(hooks, ownership(previous), undefined, event, previous.format_version === 2);
+  if (previous.owns_dependencies) assertPath(path.join(directory, 'node_modules'), true);
+  if (mcp && mcp.text !== tomlBefore) atomicWrite(toml, mcp.text);
+  if (hooks) writeJson(hooksFile, hooks);
   // Only fixed owned files may be removed; never recursively delete a profile.
   for (const name of ownedFiles) {
     const file = path.join(directory, name);
     if (assertPath(file)) fs.unlinkSync(file);
   }
+  if (previous.owns_dependencies) removeOwnedTree(directory, path.join(directory, 'node_modules'));
   if (fs.readdirSync(directory).every(name => name === 'manifest.json')) {
     fs.unlinkSync(path.join(directory, 'manifest.json'));
     fs.rmdirSync(directory);

@@ -6,7 +6,7 @@ $TestRoot = Join-Path ([IO.Path]::GetTempPath()) ('notdex-setup-' + [guid]::NewG
 $FakeBin = Join-Path $TestRoot 'bin'
 [void][IO.Directory]::CreateDirectory($FakeBin)
 $FakeCodex = Join-Path $FakeBin 'codex.cmd'
-[IO.File]::WriteAllText($FakeCodex, "@echo off`r`necho codex-cli 0.166.0`r`n")
+[IO.File]::WriteAllText($FakeCodex, "@echo off`r`necho codex-cli 0.167.0`r`n")
 $PreviousPath = $env:PATH
 $PreviousCodexHome = $env:CODEX_HOME
 $env:PATH = $FakeBin + ';' + $env:PATH
@@ -53,49 +53,51 @@ try {
         Assert-True ($Managed[0].timeout -eq 5) 'Stop timeout is not five seconds'
         Assert-True ($Hooks.description -eq 'Keep me') 'Top-level hook metadata was lost'
         Assert-True ($Hooks.hooks.SessionStart[0].hooks[0].command -eq 'echo start') 'Another event changed'
-        Assert-True ([IO.File]::ReadAllText($ConfigPath) -ceq $ConfigText) 'config.toml was modified'
+        Assert-True ([IO.File]::ReadAllText($ConfigPath).StartsWith($ConfigText)) 'Unrelated TOML content changed'
         $InstallRoot = Join-Path $Directory 'notdex'
         Assert-True ([IO.File]::ReadAllText((Join-Path $InstallRoot 'node-path.txt')).Trim() -ceq $NodePath) 'Node path was not recorded'
-        $Launcher = $Managed[0].command
-        Assert-True ($Launcher.StartsWith((Join-Path $env:SystemRoot 'System32\cmd.exe') + ' --% ')) 'Launcher does not use trusted CMD'
-        $Tokens=$null; $Errors=$null
-        [void][Management.Automation.Language.Parser]::ParseInput($Launcher,[ref]$Tokens,[ref]$Errors)
-        Assert-True ($Errors.Count -eq 0) 'Special characters broke the launcher'
+        Assert-True ($Managed[0].type -eq 'mcp_tool' -and $Managed[0].server -eq 'notdex') 'Installed handler is not resident MCP'
 
         # Run the installed launcher, replacing only clipboard and GUI side effects.
         $Preload = Join-Path $TestRoot 'mock-desktop.cjs'
         [IO.File]::WriteAllText($Preload, @'
 const cp = require('node:child_process');
+const fs = require('node:fs');
 cp.spawnSync = (exe, args, options) => {
   if (!exe.endsWith('clip.exe')) throw Error('Unexpected clipboard executable');
-  console.log('CLIP:' + options.input.subarray(2).toString('utf16le'));
+  fs.writeFileSync(process.env.NOTDEX_TEST_CLIP, options.input.subarray(2).toString('utf16le'));
   return { status: 0 };
 };
 cp.spawn = (exe, args) => {
-  console.log(Buffer.from(args.at(-1), 'base64').toString('utf8'));
+  fs.writeFileSync(process.env.NOTDEX_TEST_WORKER, Buffer.from(args.at(-1), 'base64').toString('utf8'));
   return { on() {}, unref() {} };
 };
 '@
         )
-        $Harness = '[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false)'
         $Info=New-Object Diagnostics.ProcessStartInfo
-        $Info.FileName=$PowerShell
-        $Info.Arguments='-NoProfile -NonInteractive -Sta -EncodedCommand ' + [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($Harness + "`n" + $Launcher))
+        $Info.FileName=$NodePath
+        $Info.Arguments='--no-warnings "' + (Join-Path $InstallRoot 'notdex-mcp.cjs') + '"'
         $Info.EnvironmentVariables['NODE_OPTIONS'] = '--require ' + (ConvertTo-Json -InputObject $Preload -Compress)
+        $Info.EnvironmentVariables['NOTDEX_TEST_CLIP'] = Join-Path $TestRoot 'installed-clip.txt'
+        $Info.EnvironmentVariables['NOTDEX_TEST_WORKER'] = Join-Path $TestRoot 'installed-worker.json'
+        $Info.EnvironmentVariables['NOTDEX_OVERLAY_ENDPOINT'] = ''
+        $Info.EnvironmentVariables['NOTDEX_OVERLAY_TOKEN'] = ''
         $Info.UseShellExecute=$false; $Info.CreateNoWindow=$true
         $Info.RedirectStandardInput=$true; $Info.RedirectStandardOutput=$true; $Info.RedirectStandardError=$true
         $Info.StandardOutputEncoding=[Text.UTF8Encoding]::new($false)
         $Process=New-Object Diagnostics.Process
         $Process.StartInfo=$Info
         [void]$Process.Start()
-        $Bytes=[Text.Encoding]::UTF8.GetBytes('{"last_assistant_message":"Portable answer"}')
+        $Messages = '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' + "`n" + '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"notdex_event","arguments":{"event":"stop","session_id":"fixture","last_assistant_message":"Portable answer"}}}' + "`n"
+        $Bytes=[Text.Encoding]::UTF8.GetBytes($Messages)
         $Process.StandardInput.BaseStream.Write($Bytes,0,$Bytes.Length)
         $Process.StandardInput.Close()
         Assert-True ($Process.WaitForExit(15000)) 'Installed launcher timed out'
         $Lines=$Process.StandardOutput.ReadToEnd() -split '\r?\n'
         Assert-True ($Process.ExitCode -eq 0) 'Installed hook did not exit zero'
-        Assert-True ($Lines[0] -ceq 'CLIP:Portable answer') ('Installed hook did not copy final text; fixture output: ' + ($Lines -join ' | ') + '; stderr: ' + $Process.StandardError.ReadToEnd())
-        $Data=$Lines[1] | ConvertFrom-Json
+        Assert-True ([IO.File]::ReadAllText((Join-Path $TestRoot 'installed-clip.txt')) -ceq 'Portable answer') 'Installed worker did not copy final text'
+        Assert-True (($Lines -join '') -notmatch 'Portable answer') 'Assistant response leaked into MCP output'
+        $Data=[IO.File]::ReadAllText((Join-Path $TestRoot 'installed-worker.json')) | ConvertFrom-Json
         Assert-True ($Data.codex_root -ceq $Directory) 'Runtime used the source repository as CODEX_HOME'
         Assert-True ([IO.File]::Exists($Data.helper_path)) 'Installed metrics helper was not found'
         Assert-True ([IO.File]::Exists($Data.node_path_file)) 'Installed Node configuration was not found'
@@ -165,7 +167,7 @@ cp.spawn = (exe, args) => {
         $Directory=Join-Path $TestRoot 'old-codex'
         Invoke-Setup 'install.ps1' $Directory -Fail
         Assert-True (-not [IO.Directory]::Exists($Directory)) 'Old Codex changed the profile'
-        [IO.File]::WriteAllText($FakeCodex,"@echo off`r`necho codex-cli 0.166.0`r`n")
+        [IO.File]::WriteAllText($FakeCodex,"@echo off`r`necho codex-cli 0.167.0`r`n")
     }
     Test-Case 'reinstall does not overwrite unrelated hard-linked files' {
         $Directory=Join-Path $TestRoot 'hard-links'

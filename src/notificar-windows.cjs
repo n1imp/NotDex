@@ -9,7 +9,7 @@ function runHook(raw, { copy = copyText, spawn = spawnProcess, env = process.env
   const { text, data } = extractInput(raw);
   try { copy(text, { platform: 'win32', env }); } catch {}
   const metadata = {
-    codex_root: path.dirname(__dirname), observed_at: observedAt,
+    codex_root: path.dirname(__dirname), observed_at: observedAt, scope: 'turn',
     helper_path: path.join(__dirname, 'notificar-metricas.cjs'), node_path_file: path.join(__dirname, 'node-path.txt')
   };
   for (const field of ['session_id', 'transcript_path', 'turn_id']) metadata[field] = typeof data[field] === 'string' ? data[field] : '';

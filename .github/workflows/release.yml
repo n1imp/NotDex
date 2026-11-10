@@ -19,14 +19,31 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Prepare locked dependencies for all supported platforms
+        run: |
+          npm ci --ignore-scripts --omit=dev --no-audit --no-fund
+          node .github/scripts/prepare-package.cjs
       - name: Package installation files with license
         run: |
           git archive --format=zip --prefix=NotDex/ --output=NotDex.zip HEAD
+          mkdir stage
+          unzip -q NotDex.zip -d stage
+          cp -a node_modules stage/NotDex/
+          (cd stage && zip -qr ../NotDex.zip NotDex/node_modules)
           unzip -p NotDex.zip NotDex/LICENSE | cmp LICENSE -
           if unzip -Z1 NotDex.zip | grep -Eq '^NotDex/(tests/|\.github/|CONTRIBUTING\.md|test\.)'; then
             echo 'Installation package contains development files.' >&2
             exit 1
           fi
+          for platform in darwin linux win32; do
+            for arch in arm64 x64; do
+              unzip -p NotDex.zip "NotDex/node_modules/@lydell/node-pty-$platform-$arch/package.json" > /dev/null
+            done
+          done
+          unzip -p NotDex.zip NotDex/NotDex.cmd > /dev/null
           sha256sum NotDex.zip > SHA256SUMS.txt
       - name: Publish versioned download
         env:

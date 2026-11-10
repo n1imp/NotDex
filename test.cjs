@@ -15,7 +15,7 @@ if (process.platform === 'win32') {
     run(powershell, ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'tests', name)]);
   }
 } else {
-  for (const name of ['install.sh', 'uninstall.sh', 'install.command', 'uninstall.command', 'scripts/bootstrap.sh', 'scripts/linux-deps.sh']) {
+  for (const name of ['install.sh', 'uninstall.sh', 'install.command', 'uninstall.command', 'notdex.sh', 'notdex.command', 'scripts/bootstrap.sh', 'scripts/linux-deps.sh']) {
     run('/bin/sh', ['-n', path.join(__dirname, name)]);
   }
 }

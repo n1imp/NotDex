@@ -44,6 +44,21 @@ test('current records use thread totals and ignore another thread and response t
   assert.equal(JSON.stringify(stats).includes('PRIVATE_RESPONSE_NOT_FOR_TOAST'), false);
 });
 
+test('notification scope selects the target turn rather than session totals and keeps reference cost metadata', async () => {
+  const stats = await getSessionMetrics(fixture([
+    { type: 'turn_context', payload: { turn_id: 'a', model: 'gpt-6.1-sol' } },
+    { type: 'token_usage_record', payload: { thread_id: 'session-1', turn_id: 'a', response_id: 'r1',
+      usage: { input_tokens: 100, cached_input_tokens: 50, output_tokens: 10 },
+      turn_token_usage: { input_tokens: 100, cached_input_tokens: 50, output_tokens: 10 },
+      thread_token_usage: { input_tokens: 10000, cached_input_tokens: 5000, output_tokens: 1000 }
+    } }
+  ], { scope: 'turn', turn_id: 'a' }));
+  assert.equal(stats.total_tokens, 110);
+  assert.equal(stats.scopes.session.total_tokens, 11000);
+  assert.equal(stats.usd_reference, '0.000205');
+  assert.equal(stats.scope, 'turn');
+});
+
 test('latency uses the completed target turn duration', async () => {
   const stats = await getSessionMetrics(fixture([
     { timestamp: '2026-11-05T12:00:00Z', type: 'event_msg', payload: { type: 'task_started', turn_id: 'turn-1' } },

@@ -125,7 +125,7 @@ try {
     if ($Data.PSObject.Properties.Name -contains 'text') { throw 'Assistant response is still passed to the notification worker' }
     $Xml = [xml](Get-NotificationXml $Data)
     if ($Xml.OuterXml -match 'Ajustei|Detalhes que nao') { throw 'Toast contains assistant response content' }
-    if ($Xml.toast.visual.binding.text[1].InnerText -notmatch 'Total N/D.*In N/D.*Out N/D') { throw 'Missing counters must be shown as unavailable' }
+    if ($Xml.toast.visual.binding.text[1].InnerText -notmatch 'Turno N/D.*In N/D.*Out N/D') { throw 'Missing turn counters must be shown as unavailable' }
     if ($Xml.toast.audio.silent -ne 'true') { throw 'Toast would play a second sound' }
     Write-Output 'PASS worker payload, syntax, metrics and response privacy'
 } catch { $Failures++; Write-Output "FAIL worker safety: $_" }

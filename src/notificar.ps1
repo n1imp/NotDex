@@ -34,8 +34,14 @@ function Get-NotificationXml {
     $Green = [char]::ConvertFromUtf32(0x1F7E2)
     $Title = [string]$Metadata.title
     $Title = [Security.SecurityElement]::Escape(($Title -replace '[\x00-\x08\x0B\x0C\x0E-\x1F\uFFFE\uFFFF]', ''))
-    $Counters = [Security.SecurityElement]::Escape("Total $($Counts[0]) | $Blue In $($Counts[1]) | $Orange Out $($Counts[2])")
-    $Performance = [Security.SecurityElement]::Escape("$Green Cache $Cache | Lat. turno $Latency")
+    $Label = if ($Metadata.scope -eq 'turn') { 'Turno' } else { 'Total' }
+    $Counters = [Security.SecurityElement]::Escape("$Label $($Counts[0]) | $Blue In $($Counts[1]) | $Orange Out $($Counts[2])")
+    $Cost = ''
+    if ($Metadata.scope -eq 'turn') {
+        $Dollars = if ($null -ne $Metadata.usd_reference) { ([decimal]$Metadata.usd_reference).ToString('F4', $Culture) } else { 'N/D' }
+        $Cost = ' | US$ ref. ' + $Dollars
+    }
+    $Performance = [Security.SecurityElement]::Escape("$Green Cache $Cache | Lat. turno $Latency$Cost")
     return '<toast duration="short"><visual><binding template="ToastGeneric"><text hint-maxLines="2">' + $Title + '</text><text hint-maxLines="2">' + $Counters + '</text><text>' + $Performance + '</text></binding></visual><audio silent="true"/></toast>'
 }
 
@@ -115,6 +121,7 @@ try {
 
     # Limite o payload do worker para caber na linha de comando do Windows.
     $WorkerData = @{
+        scope = 'turn'
         codex_root = [IO.Directory]::GetParent($PSScriptRoot).FullName
         session_id = if ($JsonInput.session_id -is [string]) { $JsonInput.session_id } else { '' }
         transcript_path = if ($JsonInput.transcript_path -is [string]) { $JsonInput.transcript_path } else { '' }

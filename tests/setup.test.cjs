@@ -11,7 +11,7 @@ function profile(platform = process.platform) {
   const home = path.join(root, 'codex');
   const env = { ...process.env, DISPLAY: ':fixture' };
   const options = { codexHome: home, platform, env, find: () => process.execPath,
-    run: () => ({ status: 0, stdout: 'codex-cli 0.166.0\n' }) };
+    run: () => ({ status: 0, stdout: 'codex-cli 0.167.0\n' }) };
   return { root, home, options };
 }
 
@@ -32,7 +32,7 @@ for (const platform of ['win32', 'darwin', 'linux']) {
     assert.equal(handlers.find(handler => handler.command !== 'echo keep').timeout, 5);
     assert.equal(hooks.description, 'keep');
     assert.equal(hooks.hooks.SessionStart[0].hooks[0].command, 'echo start');
-    assert.equal(fs.readFileSync(path.join(home, 'config.toml'), 'utf8'), config);
+    assert(fs.readFileSync(path.join(home, 'config.toml'), 'utf8').startsWith(config));
     fs.writeFileSync(path.join(home, 'notdex', 'user-file.txt'), 'keep user file');
     uninstall(options);
     uninstall(options);
@@ -164,7 +164,7 @@ test('native Unix CLI installation and registered hook work with desktop command
   const bin = path.join(root, 'bin');
   fs.mkdirSync(bin);
   for (const name of ['pbcopy', 'wl-copy', 'xclip', 'xsel', 'notify-send', 'osascript', 'codex']) {
-    const body = name === 'codex' ? 'printf "codex-cli 0.166.0\\n"' :
+    const body = name === 'codex' ? 'printf "codex-cli 0.167.0\\n"' :
       ['pbcopy', 'wl-copy', 'xclip', 'xsel'].includes(name) ? 'cat > "$NOTDEX_CLIP_FIXTURE"' : 'printf "%s\\n" "$@" > "$NOTDEX_NOTIFY_FIXTURE"';
     fs.writeFileSync(path.join(bin, name), '#!/bin/sh\n' + body + '\n', { mode: 0o755 });
   }
@@ -173,8 +173,12 @@ test('native Unix CLI installation and registered hook work with desktop command
   const repo = path.dirname(__dirname);
   const result = spawnSync('/bin/sh', [path.join(repo, 'install.sh'), '--no-download', '--no-system-packages', '--codex-home', home], { env, encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr);
-  const command = JSON.parse(fs.readFileSync(path.join(home, 'hooks.json'))).hooks.Stop[0].hooks[0].command;
-  const hook = spawnSync('/bin/sh', ['-c', command], { env, input: '{"last_assistant_message":"PRIVATE ANSWER"}', encoding: 'utf8', timeout: 5000 });
+  const input = [{ id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18' } },
+    { id: 2, method: 'tools/call', params: { name: 'notdex_event', arguments: { event: 'stop', session_id: 'fixture', last_assistant_message: 'PRIVATE ANSWER' } } }]
+    .map(message => JSON.stringify({ jsonrpc: '2.0', ...message })).join('\n') + '\n';
+  const hook = spawnSync(process.execPath, ['--no-warnings', path.join(home, 'notdex/notdex-mcp.cjs')], {
+    env: { ...env, NOTDEX_OVERLAY_ENDPOINT: '', NOTDEX_OVERLAY_TOKEN: '' }, input, encoding: 'utf8', timeout: 15000
+  });
   assert.equal(hook.status, 0, hook.stderr);
   assert.equal(fs.readFileSync(env.NOTDEX_CLIP_FIXTURE, 'utf8'), 'PRIVATE ANSWER');
   for (let i = 0; i < 60 && !fs.existsSync(env.NOTDEX_NOTIFY_FIXTURE); i++) await new Promise(resolve => setTimeout(resolve, 50));

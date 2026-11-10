@@ -62,7 +62,8 @@ function formatNotification(stats) {
   }
   return {
     title: typeof stats.title === 'string' && stats.title.trim() ? stats.title : 'Codex',
-    body: `Total ${count(stats.total_tokens)} | 🔵 In ${count(stats.input_tokens)} | 🟠 Out ${count(stats.output_tokens)}\n🟢 Cache ${cache} | Lat. turno ${latency}`
+    body: `${stats.scope === 'turn' ? 'Turno' : 'Total'} ${count(stats.total_tokens)} | 🔵 In ${count(stats.input_tokens)} | 🟠 Out ${count(stats.output_tokens)}\n🟢 Cache ${cache} | Lat. turno ${latency}` +
+      (stats.scope === 'turn' ? ' | US$ ref. ' + (stats.usd_reference === null || stats.usd_reference === undefined ? 'N/D' : Number(stats.usd_reference).toLocaleString('pt-BR', { minimumFractionDigits: 4, maximumFractionDigits: 4 })) : '')
   };
 }
 

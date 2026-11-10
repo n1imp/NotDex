@@ -1,0 +1,18 @@
+{
+  "name": "notdex",
+  "version": "0.2.0-preview.1",
+  "private": true,
+  "license": "MIT",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --no-warnings test.cjs"
+  },
+  "dependencies": {
+    "@lydell/node-pty": "1.2.0-beta.18",
+    "@xterm/addon-serialize": "0.14.0",
+    "@xterm/headless": "6.0.0",
+    "smol-toml": "1.9.1"
+  }
+}
