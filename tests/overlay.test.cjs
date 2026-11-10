@@ -76,6 +76,22 @@ test('Windows terminal key records handle controls without consuming ordinary or
   assert.equal(input.push(key(37)), key(37));
 });
 
+test('Windows VT character records decode fragmented legacy shortcuts and preserve regular text', () => {
+  const state = new OverlayState(), input = new InputRouter(state, () => ({ cols: 100, rows: 30 }));
+  const encode = text => [...text].map(char => `\x1b[0;0;${char.codePointAt(0)};1;0;1_`).join('');
+  const f12 = encode('\x1b[24~');
+  assert.equal(input.push(f12.slice(0, 8)), '');
+  assert.equal(input.push(f12.slice(8)), '');
+  assert(state.editing);
+  assert.equal(input.push(encode('\x1b[D\x1b[B')), '');
+  assert.equal(state.x, 51); assert.equal(state.y, 1);
+  assert.equal(input.push(encode('h')), '');
+  assert.equal(state.visible, false);
+  assert.equal(input.push(encode('literal')), 'literal');
+  input.push('\x1b[1;2'); assert.equal(input.flush(), '');
+  assert.equal(input.push('H'), '\x1b[1;2H');
+});
+
 for (const alternate of [false, true]) test(`compositor restores covered Codex content after moving/hiding (${alternate ? 'alternate' : 'normal'} buffer)`, async () => {
   const source = new Terminal({ cols: 100, rows: 20, allowProposedApi: true });
   const output = new Terminal({ cols: 100, rows: 20, allowProposedApi: true });

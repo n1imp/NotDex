@@ -28,9 +28,21 @@ const ARROWS = { '\x1b[A': [0, -1], '\x1b[B': [0, 1], '\x1b[C': [1, 0], '\x1b[D'
 const KEYS = [F12, PASTE_START, PASTE_END, ...Object.keys(ARROWS)];
 
 class InputRouter {
-  constructor(state, size) { this.state = state; this.size = size; this.buffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
+  constructor(state, size) { this.state = state; this.size = size; this.buffer = ''; this.wireBuffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
   push(data) {
-    this.buffer += data; let forward = '';
+    this.wireBuffer += data;
+    const lastEscape = this.wireBuffer.lastIndexOf('\x1b');
+    const tail = this.wireBuffer.slice(lastEscape);
+    const pending = lastEscape >= 0 && tail.length < 128 && /^\x1b(?:\[[\d;]*)?$/.test(tail);
+    const ready = pending ? this.wireBuffer.slice(0, lastEscape) : this.wireBuffer;
+    this.wireBuffer = pending ? tail : '';
+    // ConPTY may wrap pasted VT bytes in VK=0 character records instead of raw bytes.
+    this.buffer += ready.replace(/\x1b\[0;\d+;(\d+);([01]);0;(\d+)_/g, (record, code, down, repeats) => {
+      const value = Number(code);
+      if (!value || value > 0x10ffff) return record;
+      return down === '1' ? String.fromCodePoint(value).repeat(Math.min(1000, Number(repeats))) : '';
+    });
+    let forward = '';
     while (this.buffer) {
       if (this.pasting) {
         const end = this.buffer.indexOf(PASTE_END);
@@ -81,7 +93,9 @@ class InputRouter {
     return forward;
   }
   flush() {
+    if (this.wireBuffer === '\x1b') { this.buffer += this.wireBuffer; this.wireBuffer = ''; }
     if (this.pasting) return '';
+    if (/^\x1b(?:\[[0-?]*[ -/]*|O)$/.test(this.buffer)) return '';
     const value = this.buffer; this.buffer = '';
     if (value === '\x1b' && this.state.editing) { this.state.editing = false; return ''; }
     return value;
