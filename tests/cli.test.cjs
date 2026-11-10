@@ -23,3 +23,12 @@ test('passthrough preserves literal arguments and the upstream exit code without
     env: { ...process.env, NOTDEX_ARGS: output }, input: { isTTY: false }, output: { isTTY: false } });
   assert.equal(code, 7); assert.deepEqual(JSON.parse(fs.readFileSync(output)), args);
 });
+
+test('PATH aliases to the owned shim directory are excluded before real Codex lookup', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'notdex-path-alias-'));
+  const real = path.join(root, 'real'), alias = path.join(root, 'alias');
+  fs.mkdirSync(real); fs.mkdirSync(path.join(real, 'bin'));
+  fs.symlinkSync(real, alias, 'junction');
+  const env = realEnvironment({ PATH: path.join(alias, 'bin') }, path.join(real, 'bin'));
+  assert.equal(env.PATH, '');
+});

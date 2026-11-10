@@ -33,7 +33,10 @@ function resolveCodex(selected, env = process.env) {
 
 function realEnvironment(env, bin, platform = process.platform) {
   const windows = platform === 'win32', separator = windows ? ';' : ':';
-  const normalize = value => windows ? value.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() : path.resolve(value);
+  const normalize = value => {
+    try { value = fs.realpathSync(value); } catch {}
+    return windows ? value.replace(/\\/g, '/').replace(/\/$/, '').toLowerCase() : path.resolve(value);
+  };
   const result = { ...env };
   const value = env.PATH ?? env.Path ?? env.path ?? '';
   for (const key of Object.keys(result)) if (key.toUpperCase() === 'PATH') delete result[key];

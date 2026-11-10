@@ -28,6 +28,8 @@ async function launch(args, { directory = __dirname, codex, env = process.env, i
       codex = resolveCodex(fallback.path, cleaned);
     }
   }
+  const bin = path.join(directory, 'bin');
+  if (fs.existsSync(bin) && path.dirname(fs.realpathSync(codex.file)) === fs.realpathSync(bin)) throw Error('NotDex refused a recursive Codex launcher; reinstall with the official Codex on PATH.');
   if (shouldOverlay(args, input.isTTY, output.isTTY)) {
     return require('./terminal.cjs').runTerminal({ codex, args, codexHome: env.CODEX_HOME || path.dirname(directory), input, output, env });
   }
