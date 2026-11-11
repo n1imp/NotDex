@@ -9,7 +9,7 @@ const { prepareHooks } = require('./hooks-config.cjs');
 const { realEnvironment } = require('../src/cli.cjs');
 
 const runtimeFiles = ['THIRD_PARTY_NOTICES.txt', 'notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
-  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs', 'cli.cjs'];
+  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'renderer.cjs', 'navigation.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs', 'cli.cjs'];
 const ownedFiles = [...runtimeFiles, 'node-path.txt', 'codex-target.json'];
 const repo = path.dirname(__dirname);
 
@@ -77,7 +77,7 @@ function makeHookCommand(platform, directory, nodePath = process.execPath) {
   }
   return quoteShell(nodePath) + ' --no-warnings ' + quoteShell(path.join(directory, 'notificar-unix.cjs'));
 }
-function updateHooks(config, commands, handler, event = 'Stop', ownsMcp = false) {
+function updateHooks(config, commands, handler, event = 'Stop', ownsMcp = false, matcher) {
   config.hooks ??= {};
   if (!config.hooks || typeof config.hooks !== 'object' || Array.isArray(config.hooks)) throw new Error('hooks must be an object');
   if (config.hooks[event] !== undefined && !Array.isArray(config.hooks[event])) throw new Error(event + ' must be an array');
@@ -88,7 +88,7 @@ function updateHooks(config, commands, handler, event = 'Stop', ownsMcp = false)
       (commands.includes(item.command) || ownsMcp && item.type === 'mcp_tool' && item.server === 'notdex' && item.tool === 'notdex_event')));
     if (kept.length || kept.length === group.hooks.length) groups.push({ ...group, hooks: kept });
   }
-  if (handler) groups.push({ hooks: [handler] });
+  if (handler) groups.push({ ...(matcher ? { matcher } : {}), hooks: [handler] });
   config.hooks[event] = groups;
   return config;
 }
@@ -132,10 +132,11 @@ function install(input = {}) {
   const hooksBefore = entry(hooksFile) ? fs.readFileSync(hooksFile, 'utf8') : null;
   const commands = ownership(previous);
   const handlers = {};
-  for (const [event, name] of [['Stop', 'stop'], ['UserPromptSubmit', 'prompt']]) {
+  for (const [event, name] of [['SessionStart', 'start'], ['Stop', 'stop'], ['UserPromptSubmit', 'prompt']]) {
     const input = { event: name, session_id: '${session_id}', turn_id: '${turn_id}', transcript_path: '${transcript_path}', cwd: '${cwd}', model: '${model}' };
     if (name === 'stop') input.last_assistant_message = '${last_assistant_message}';
     handlers[event] = [{ hooks: [{ type: 'mcp_tool', server: 'notdex', tool: 'notdex_event', input, timeout: 5, statusMessage: 'NotDex' }] }];
+    if (name === 'start') handlers[event][0].matcher = '^(startup|resume|clear|fork)$';
   }
   // An explicit global opt-out must not become a silently nonfunctional installation.
   const toml = path.join(home, 'config.toml');
@@ -143,7 +144,7 @@ function install(input = {}) {
   if (parseToml(tomlBefore).features?.hooks === false) throw new Error('Enable hooks in Codex first. config.toml is preserved.');
   const owns = item => item && item.statusMessage === 'NotDex' && (commands.includes(item.command) || previous?.format_version === 2 && item.type === 'mcp_tool' && item.server === 'notdex' && item.tool === 'notdex_event');
   const hookPlan = prepareHooks(tomlBefore, config, { owns, ownedBlocks: previous?.owned_hook_blocks, handlers });
-  if (!hookPlan.inline) for (const event of Object.keys(handlers)) updateHooks(config, commands, handlers[event][0].hooks[0], event, previous?.format_version === 2);
+  if (!hookPlan.inline) for (const event of Object.keys(handlers)) updateHooks(config, commands, handlers[event][0].hooks[0], event, previous?.format_version === 2, handlers[event][0].matcher);
   const mcp = prepareMcpConfig(hookPlan.text, { directory, nodePath: process.execPath, ownedBlocks: previous?.owned_mcp_blocks });
   const modules = path.join(directory, 'node_modules');
   if (assertPath(modules, true) && !previous?.owns_dependencies) throw new Error('Existing dependencies do not belong to NotDex: ' + modules);
@@ -201,7 +202,7 @@ function uninstall(input = {}) {
   const hookPlan = prepareHooks(tomlBefore, null, { owns, ownedBlocks: previous.owned_hook_blocks, remove: true });
   const mcp = previous.format_version === 2 ? prepareMcpConfig(hookPlan.text, { ownedBlocks: previous.owned_mcp_blocks, remove: true }) : null;
   const hooks = entry(hooksFile) ? readJson(hooksFile) : null;
-  if (hooks) for (const event of ['Stop', 'UserPromptSubmit']) updateHooks(hooks, ownership(previous), undefined, event, previous.format_version === 2);
+  if (hooks) for (const event of ['SessionStart', 'Stop', 'UserPromptSubmit']) updateHooks(hooks, ownership(previous), undefined, event, previous.format_version === 2);
   if (previous.owns_dependencies) assertPath(path.join(directory, 'node_modules'), true);
   if (mcp && mcp.text !== tomlBefore) atomicWrite(toml, mcp.text);
   if (hooks) writeJson(hooksFile, hooks);

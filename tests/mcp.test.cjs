@@ -7,6 +7,16 @@ const os = require('node:os');
 const readline = require('node:readline');
 const { spawn } = require('node:child_process');
 
+test('SessionStart publishes only metadata and never schedules clipboard, sound or toast', async () => {
+  const { serve } = require('../src/notdex-mcp.cjs');
+  const input = new PassThrough(), output = new PassThrough(); let published;
+  output.resume();
+  const close = serve({ input, output, enqueue() { assert.fail('start dispatched mission work'); }, publish(data) { published = data; } });
+  input.write(JSON.stringify({ id: 1, method: 'tools/call', params: { name: 'notdex_event', arguments: { event: 'start', session_id: 's' } } }) + '\n');
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(published, { event: 'start', session_id: 's' }); close();
+});
+
 test('resident protocol replies before enqueueing work and excludes response text from overlay metadata', async () => {
   const { serve } = require('../src/notdex-mcp.cjs');
   const input = new PassThrough(), output = new PassThrough(), order = [], replies = [];
@@ -40,25 +50,30 @@ test('protocol handles initialize, tools, malformed JSON and invalid parameters 
   close();
 });
 
-test('actual MCP process answers a second request while its mission thread is blocked', async t => {
+test('actual MCP process answers a second request while its mission thread is blocked', { timeout: 150000 }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'notdex-mcp-'));
   for (const file of ['notdex-mcp.cjs', 'bridge.cjs']) fs.copyFileSync(path.join(__dirname, '../src', file), path.join(root, file));
-  const marker = path.join(root, 'finished');
-  fs.writeFileSync(path.join(root, 'mission-worker.cjs'), `const {parentPort}=require('node:worker_threads');parentPort.on('message',data=>{if(data.event==='shutdown'){parentPort.close();return;}Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,4000);require('node:fs').writeFileSync(${JSON.stringify(marker)},'done');});`);
+  const started = path.join(root, 'started'), release = path.join(root, 'release');
+  fs.writeFileSync(path.join(root, 'mission-worker.cjs'), `const {parentPort}=require('node:worker_threads'),fs=require('node:fs');parentPort.on('message',data=>{if(data.event==='shutdown'){parentPort.close();return;}fs.writeFileSync(${JSON.stringify(started)},'started');while(!fs.existsSync(${JSON.stringify(release)}))Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,50);});`);
   const child = spawn(process.execPath, [path.join(root, 'notdex-mcp.cjs')], { windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
   t.after(() => child.kill());
   const replies = new Map(), pending = new Map();
   readline.createInterface({ input: child.stdout }).on('line', line => { const reply = JSON.parse(line); replies.set(reply.id, reply); pending.get(reply.id)?.(reply); });
-  const wait = id => replies.has(id) ? Promise.resolve(replies.get(id)) : new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(Error('MCP reply missing')), 15000);
+  const wait = (id, timeout = 5000) => replies.has(id) ? Promise.resolve(replies.get(id)) : new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(Error('MCP reply missing')), timeout);
     pending.set(id, reply => { clearTimeout(timer); resolve(reply); });
   });
   const send = (id, method, params) => child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, params }) + '\n');
-  send(1, 'initialize', { protocolVersion: '2025-06-18' }); await wait(1);
+  // Cold process startup is separate from the five-second deadline of a resident hook.
+  send(1, 'initialize', { protocolVersion: '2025-06-18' }); await wait(1, 120000);
   send(2, 'tools/call', { name: 'notdex_event', arguments: { event: 'stop', session_id: 's', turn_id: 't', last_assistant_message: 'synthetic' } });
   assert((await wait(2)).result);
+  const deadline = Date.now() + 20000;
+  while (!fs.existsSync(started) && Date.now() < deadline) await new Promise(resolve => setTimeout(resolve, 50));
+  assert(fs.existsSync(started), 'worker did not start');
   send(3, 'ping'); assert((await wait(3)).result);
-  assert.equal(fs.existsSync(marker), false, 'MCP waited for blocking work');
+  assert.equal(fs.existsSync(release), false, 'MCP waited for blocking work');
+  fs.writeFileSync(release, 'release');
 });
 
 test('overlay client rejects non-loopback destinations and never publishes assistant responses', async () => {

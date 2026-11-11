@@ -9,6 +9,8 @@ class OverlayState {
     this.scope = SCOPES.includes(saved.scope) ? saved.scope : 'turn';
     this.visible = saved.visible !== false;
     this.editing = false;
+    this.suspended = false;
+    this.commandCenterShortcut = true;
   }
   rect(cols, rows) {
     if (!this.visible || cols < 52 || rows < 12) return null;
@@ -22,13 +24,14 @@ class OverlayState {
   saved() { return { x: this.x, y: this.y, scope: this.scope, visible: this.visible }; }
 }
 
-const F12 = '\x1b[24~', PASTE_START = '\x1b[200~', PASTE_END = '\x1b[201~';
+const F12 = '\x1b[24~', F9 = '\x1b[20~', PASTE_START = '\x1b[200~', PASTE_END = '\x1b[201~';
 const ARROWS = { '\x1b[A': [0, -1], '\x1b[B': [0, 1], '\x1b[C': [1, 0], '\x1b[D': [-1, 0],
   '\x1bOA': [0, -1], '\x1bOB': [0, 1], '\x1bOC': [1, 0], '\x1bOD': [-1, 0] };
-const KEYS = [F12, PASTE_START, PASTE_END, ...Object.keys(ARROWS)];
+const KEYS = [F12, F9, PASTE_START, PASTE_END, ...Object.keys(ARROWS)];
 
 class InputRouter {
-  constructor(state, size) { this.state = state; this.size = size; this.buffer = ''; this.wireBuffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
+  constructor(state, size, onCommandCenter = () => {}) { this.state = state; this.size = size; this.onCommandCenter = onCommandCenter; this.buffer = ''; this.wireBuffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
+  commandCenter() { this.state.editing = false; this.state.suspended = true; this.onCommandCenter(); }
   push(data) {
     this.wireBuffer += data;
     const lastEscape = this.wireBuffer.lastIndexOf('\x1b');
@@ -54,8 +57,9 @@ class InputRouter {
       const key = KEYS.find(value => this.buffer.startsWith(value));
       if (key) {
         this.buffer = this.buffer.slice(key.length);
-        if (key === PASTE_START) { this.pasting = true; forward += key; }
-        else if (key === F12) { this.state.visible = true; this.state.editing = !this.state.editing; }
+        if (key === PASTE_START) { this.state.editing = false; this.pasting = true; forward += key; }
+        else if (key === F12) { this.state.visible = true; this.state.suspended = false; this.state.editing = !this.state.editing; }
+        else if (key === F9) { if (this.state.commandCenterShortcut) this.commandCenter(); else this.state.editing = false; forward += key; }
         else if (this.state.editing && ARROWS[key]) { const { cols, rows } = this.size(); this.state.move(...ARROWS[key], cols, rows); }
         else forward += key;
         continue;
@@ -71,7 +75,8 @@ class InputRouter {
             const [, vk, down, modifiers, repeats] = windows;
             if (down === '0' && this.windowsKeys.delete(vk)) handled = true;
             else if (down === '1' && !(Number(modifiers) & 31)) {
-              if (vk === '123') { this.state.visible = true; this.state.editing = !this.state.editing; handled = true; }
+              if (vk === '120' && this.state.commandCenterShortcut) this.commandCenter();
+              else if (vk === '123') { this.state.visible = true; this.state.suspended = false; this.state.editing = !this.state.editing; handled = true; }
               else if (this.state.editing) {
                 const arrows = { 37: [-1, 0], 38: [0, -1], 39: [1, 0], 40: [0, 1] };
                 if (arrows[vk]) { const { cols, rows } = this.size(); this.state.move(...arrows[vk].map(value => value * Math.min(1000, Number(repeats))), cols, rows); handled = true; }
@@ -79,16 +84,24 @@ class InputRouter {
                 else if (vk === '27' || vk === '72') { if (vk === '72') this.state.visible = false; this.state.editing = false; handled = true; }
               }
               if (handled) this.windowsKeys.add(vk);
+              else {
+                this.state.editing = false;
+                if (vk === '13' || vk === '27') this.state.suspended = false;
+              }
             }
           }
-          if (!handled) forward += sequence[0];
+          if (!handled) { this.state.editing = false; forward += sequence[0]; }
           this.buffer = this.buffer.slice(sequence[0].length); continue;
         }
       }
       const char = this.buffer[0]; this.buffer = this.buffer.slice(1);
       if (this.state.editing && char === '\t') this.state.scope = SCOPES[(SCOPES.indexOf(this.state.scope) + 1) % SCOPES.length];
       else if (this.state.editing && ['h', 'H'].includes(char)) { this.state.visible = false; this.state.editing = false; }
-      else forward += char;
+      else {
+        this.state.editing = false;
+        if (char === '\r' || char === '\n') this.state.suspended = false;
+        forward += char;
+      }
     }
     return forward;
   }
@@ -98,6 +111,7 @@ class InputRouter {
     if (/^\x1b(?:\[[0-?]*[ -/]*|O)$/.test(this.buffer)) return '';
     const value = this.buffer; this.buffer = '';
     if (value === '\x1b' && this.state.editing) { this.state.editing = false; return ''; }
+    if (value === '\x1b') this.state.suspended = false;
     return value;
   }
 }
@@ -123,12 +137,12 @@ function panelLines(state, snapshot = {}) {
   const age = Date.parse(snapshot.observed_at) - Date.parse(snapshot.quota_updated_at);
   const freshness = Number.isFinite(age) && age >= 0 ? Math.floor(age / 1000) + 's' : 'N/D';
   const body = [
-    'Sessao ' + clean(snapshot.session_id || '').slice(0, 8) + ' | ' + (stats.model || snapshot.model || 'modelo N/D'),
+    snapshot.session_id ? 'Sessao ' + clean(snapshot.session_id).slice(0, 8) + ' | ' + (stats.model || snapshot.model || 'modelo N/D') : 'Aguardando identificacao da sessao',
     'Total ' + count(stats.total_tokens) + ' | Out ' + count(stats.output_tokens),
     'In ' + count(stats.input_tokens) + ' | Cache ' + cache,
     'US$ ref.std ' + dollars + ' | Lat ' + duration(stats),
     'Conta ' + (snapshot.plan || 'N/D') + ' | ' + quotaLabel(snapshot.quota?.primary) + ' | ' + quotaLabel(snapshot.quota?.secondary),
-    state.editing ? 'Setas mover | Tab escopo | H ocultar | Esc' : 'F12 controles | Cota ' + freshness + ' | USD ' + (snapshot.pricing_date || 'N/D')
+    state.editing ? 'Setas mover | Tab escopo | H ocultar | Esc' : (state.commandCenterShortcut ? 'F9 sessoes' : '/agents') + ' | F12 painel | Cota ' + freshness
   ];
   return ['+' + (' NotDex / ' + labels[state.scope] + (state.editing ? ' [Mover] ' : ' ')).padEnd(46, '-') + '+',
     ...body.map(line => '|' + clean(line).slice(0, 46).padEnd(46) + '|'), '+' + '-'.repeat(46) + '+'];

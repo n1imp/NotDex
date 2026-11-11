@@ -5,6 +5,35 @@ const { SerializeAddon } = require('@xterm/addon-serialize');
 const { OverlayState, InputRouter, composeFrame, panelLines } = require('../src/overlay.cjs');
 const write = (terminal, data) => new Promise(resolve => terminal.write(data, resolve));
 
+test('a user-owned F9 binding is forwarded without suspending the overlay', () => {
+  const state = new OverlayState(); state.commandCenterShortcut = false;
+  const input = new InputRouter(state, () => ({ cols: 100, rows: 30 }));
+  assert.equal(input.push('\x1b[20~'), '\x1b[20~'); assert.equal(state.suspended, false);
+  const windowsF9 = '\x1b[120;0;0;1;0;1_';
+  assert.equal(input.push(windowsF9), windowsF9); assert.equal(state.suspended, false);
+});
+
+test('command center receives F9 intact and releases overlay navigation without changing saved visibility', () => {
+  const state = new OverlayState(); let navigated = 0;
+  const input = new InputRouter(state, () => ({ cols: 100, rows: 30 }), () => navigated++);
+  input.push('\x1b[24~');
+  assert.equal(input.push('\x1b[20~'), '\x1b[20~');
+  assert.equal(state.editing, false); assert.equal(state.suspended, true); assert.equal(state.saved().visible, true);
+  assert.equal(navigated, 1);
+  assert.equal(input.push('\x1b[B\t'), '\x1b[B\t');
+  assert.equal(input.push('\r'), '\r'); assert.equal(state.suspended, false);
+  input.push('\x1b[24~'); assert.equal(input.push('/agents'), '/agents'); assert.equal(state.editing, false);
+});
+
+test('native Windows F9 and ordinary typing release overlay focus while preserving key records', () => {
+  const state = new OverlayState(), input = new InputRouter(state, () => ({ cols: 100, rows: 30 }));
+  const f9 = '\x1b[120;0;0;1;0;1_';
+  input.push('\x1b[24~'); assert.equal(input.push(f9), f9); assert.equal(state.editing, false); assert(state.suspended);
+  input.push('\x1b[24~'); assert.equal(state.suspended, false);
+  const letter = '\x1b[65;0;97;1;0;1_';
+  assert.equal(input.push(letter), letter); assert.equal(state.editing, false);
+});
+
 test('overlay starts top-right, moves anywhere inside terminal bounds, switches scope and survives resize', () => {
   const state = new OverlayState();
   assert.deepEqual(state.rect(100, 30), { x: 52, y: 0, width: 48, height: 8 });
@@ -28,7 +57,8 @@ test('split key sequences and bracketed pasted text do not leak shortcuts or cor
   assert.equal(state.editing, true);
   const pasted = '\x1b[200~literal \x1b[24~ tab\t\x1b[201~';
   assert.equal(input.push(pasted), pasted);
-  assert.equal(state.editing, true);
+  assert.equal(state.editing, false);
+  input.push('\x1b[24~');
   input.push('\x1b'); assert.equal(input.flush(), ''); assert.equal(state.editing, false);
   assert.equal(input.push('\t'), '\t');
 });
@@ -71,6 +101,7 @@ test('Windows terminal key records handle controls without consuming ordinary or
   assert.equal(state.scope, 'request');
   assert.equal(input.push(key(65, 97)), key(65, 97));
   assert.equal(input.push(key(123, 0, 1, 8)), key(123, 0, 1, 8));
+  input.push('\x1b[24~');
   assert.equal(input.push(key(27, 27)), '');
   assert.equal(state.editing, false);
   assert.equal(input.push(key(37)), key(37));

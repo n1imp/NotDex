@@ -32,6 +32,7 @@ for (const platform of ['win32', 'darwin', 'linux']) {
     assert.equal(handlers.find(handler => handler.command !== 'echo keep').timeout, 5);
     assert.equal(hooks.description, 'keep');
     assert.equal(hooks.hooks.SessionStart[0].hooks[0].command, 'echo start');
+    assert.equal(hooks.hooks.SessionStart.at(-1).matcher, '^(startup|resume|clear|fork)$');
     assert(fs.readFileSync(path.join(home, 'config.toml'), 'utf8').startsWith(config));
     fs.writeFileSync(path.join(home, 'notdex', 'user-file.txt'), 'keep user file');
     uninstall(options);

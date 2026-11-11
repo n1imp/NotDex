@@ -6,14 +6,14 @@ const { metadata, publishEvent } = require('./bridge.cjs');
 const TOOL = {
   name: 'notdex_event', description: 'Internal Codex lifecycle callback for NotDex clipboard, notifications and local observability.',
   inputSchema: { type: 'object', additionalProperties: false, required: ['event', 'session_id'], properties: {
-    event: { type: 'string', enum: ['prompt', 'stop'] }, session_id: { type: 'string' },
+    event: { type: 'string', enum: ['start', 'prompt', 'stop'] }, session_id: { type: 'string' },
     ...Object.fromEntries(['turn_id', 'transcript_path', 'cwd', 'model', 'last_assistant_message'].map(key => [key, { type: ['string', 'null'] }]))
   } },
   annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false }
 };
 
 function valid(data) {
-  return data && typeof data === 'object' && ['prompt', 'stop'].includes(data.event) && typeof data.session_id === 'string' && data.session_id.length > 0 && data.session_id.length <= 200 &&
+  return data && typeof data === 'object' && ['start', 'prompt', 'stop'].includes(data.event) && typeof data.session_id === 'string' && data.session_id.length > 0 && data.session_id.length <= 200 &&
     Object.entries(data).every(([key, value]) => Object.hasOwn(TOOL.inputSchema.properties, key) && (value === null || typeof value === 'string'));
 }
 

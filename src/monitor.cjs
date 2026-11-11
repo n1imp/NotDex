@@ -2,6 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { StringDecoder } = require('node:string_decoder');
 const { MetricsAccumulator } = require('./observability.cjs');
+const { getSessionMetadata } = require('./notificar-metricas.cjs');
 const relevant = /"(?:token_count|token_usage_record|task_started|task_complete|turn_context|session_meta)"/;
 const normal = value => process.platform === 'win32' ? value.replace(/^\\\\\?\\UNC\\/, '\\\\').replace(/^\\\\\?\\/, '') : value;
 const inside = (root, file) => { const relative = path.relative(normal(root), normal(file)); return relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative); };
@@ -24,23 +25,35 @@ class TranscriptMonitor {
     });
   }
   reset() {
+    this.pendingTurnId = null;
     this.offset = 0; this.identity = null; this.pending = ''; this.skipLine = false; this.decoder = new StringDecoder('utf8');
     this.metrics = new MetricsAccumulator({ sessionId: this.data?.session_id });
     if (this.data?.turn_id && this.data?.model) this.metrics.consume({ type: 'turn_context', payload: { turn_id: this.data.turn_id, model: this.data.model } });
   }
   attach(data) {
-    if (!data || typeof data.session_id !== 'string' || typeof data.transcript_path !== 'string' || !this.allowed(data.transcript_path)) return false;
-    if (this.data?.session_id !== data.session_id || this.data?.transcript_path !== data.transcript_path) {
+    if (!data || typeof data.session_id !== 'string' || !data.session_id || data.session_id.startsWith('${')) return false;
+    if (data.transcript_path && (typeof data.transcript_path !== 'string' || !this.allowed(data.transcript_path))) return false;
+    if (this.data?.session_id !== data.session_id || data.transcript_path && this.data?.transcript_path !== data.transcript_path) {
       this.generation++; this.data = { ...data }; this.reset();
     } else this.data = { ...this.data, ...data };
+    if (data.event === 'prompt' && data.turn_id) {
+      this.pendingTurnId = data.turn_id;
+      this.metrics.consume({ type: 'turn_context', payload: { turn_id: data.turn_id, model: data.model } });
+    }
+    this.onChange(this.snapshot());
     return true;
   }
+  detach() { this.generation++; this.data = null; this.reset(); this.onChange(this.snapshot()); }
   consume(text) {
     for (const part of text.split(/(?<=\n)/)) {
       if (!this.skipLine) this.pending += part;
       if (this.pending.length > 1024 * 1024) { this.skipLine = true; this.pending = ''; }
       if (part.endsWith('\n')) {
-        if (!this.skipLine && relevant.test(this.pending)) { try { this.metrics.consume(JSON.parse(this.pending)); } catch {} }
+        if (!this.skipLine && relevant.test(this.pending)) { try {
+          const event = JSON.parse(this.pending);
+          this.metrics.consume(event);
+          if (event.payload?.turn_id === this.pendingTurnId) this.pendingTurnId = null;
+        } catch {} }
         this.pending = ''; this.skipLine = false;
       }
     }
@@ -48,7 +61,12 @@ class TranscriptMonitor {
   tick() {
     if (this.reading) return this.reading;
     if (this.closed || !this.data) return Promise.resolve();
-    const generation = this.generation, file = this.data.transcript_path;
+    if (!this.data.transcript_path) {
+      const file = getSessionMetadata({ codex_root: this.root, session_id: this.data.session_id }, { includeTitle: false }).transcript_path;
+      if (!file || !this.allowed(file)) return Promise.resolve();
+      this.data.transcript_path = file;
+    }
+    const generation = this.generation, file = this.data.transcript_path, previousOffset = this.offset;
     this.reading = (async () => {
       let handle;
       try {
@@ -65,13 +83,14 @@ class TranscriptMonitor {
           if (!bytesRead || generation !== this.generation) break;
           this.offset += bytesRead; this.consume(this.decoder.write(buffer.subarray(0, bytesRead)));
         }
-        if (generation === this.generation && !this.closed) this.onChange(this.snapshot());
+        if (generation === this.generation && !this.closed && this.offset !== previousOffset) this.onChange(this.snapshot());
       } catch {} finally { await handle?.close(); }
     })().finally(() => { this.reading = null; });
     return this.reading;
   }
   snapshot(now = new Date().toISOString()) {
-    return { ...this.metrics.snapshot({ turnId: this.data?.turn_id || undefined, now }), observed_at: now, session_id: this.data?.session_id || null, model: this.data?.model || null };
+    const snapshot = this.metrics.snapshot({ turnId: this.pendingTurnId || undefined, now });
+    return { ...snapshot, observed_at: now, session_id: this.data?.session_id || null, model: snapshot.turn.model || this.data?.model || null };
   }
   close() { this.closed = true; clearInterval(this.timer); }
 }
