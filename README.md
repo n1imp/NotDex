@@ -1,6 +1,10 @@
 # NotDex
 
-Clipboard automático, notificações e observabilidade no próprio terminal do **Codex CLI**, em Windows, macOS e Linux desktop.
+Clipboard automático, notificações do último turno e painel de observabilidade no próprio terminal do **Codex CLI**, em Windows, macOS e Linux desktop.
+
+Instale uma vez e continue usando **`codex`**, **`codex resume`** ou **`codex fork`**. O painel é ativado automaticamente nas sessões interativas.
+
+**Versão atual: [v0.2.0-preview.3](https://github.com/n1imp/NotDex/releases/tag/v0.2.0-preview.3)** · [Baixar ZIP](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.3/NotDex.zip) · [Relatar problema](https://github.com/n1imp/NotDex/issues)
 
 Ao terminar um turno, copia a resposta final e mostra uma notificação com o título da sessão e **métricas daquele turno**. O conteúdo da resposta não aparece na notificação. O painel permite alternar entre turno, última requisição e sessão, sem usar um modelo para calcular os dados.
 
@@ -18,7 +22,8 @@ Ao terminar um turno, copia a resposta final e mostra uma notificação com o t�
 | macOS 13.5+ | [install.command](install.command), ou `sh install.sh` | Abra um terminal novo e rode `codex` |
 | Linux com desktop | `sh install.sh` | Abra um terminal novo e rode `codex` |
 
-4. Abra um terminal novo, execute `codex`, abra **/hooks** e revise/confie nos dois hooks **NotDex**. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
+4. Feche e reabra o terminal. Na pasta do seu projeto, execute `codex`.
+5. Se o Codex solicitar revisão, abra **/hooks** e revise/confie nos dois hooks **NotDex**. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
 
 O ZIP inclui as dependências com versões e hashes fixados. O instalador reutiliza Node.js 24+ ou baixa uma cópia privada de nodejs.org, também com SHA-256 fixado. A instalação pelo ZIP não precisa de npm nem compilação. Linux pede consentimento antes de instalar ferramentas de desktop ausentes.
 
@@ -26,19 +31,27 @@ O instalador integra o painel ao comando habitual `codex`, inclusive `codex resu
 
 Os atalhos NotDex continuam disponíveis. A integração cobre o CLI no terminal; não injeta um painel no app desktop, na extensão do VS Code nem em programas que chamem o executável oficial por caminho absoluto. Aliases ou funções `codex` definidos pelo usuário podem ter precedência sobre o PATH.
 
-Se um atalho baixado for bloqueado, revise a origem e use o comando equivalente na pasta extraída:
+### Instalação pelo terminal
+
+Execute somente o bloco do seu sistema, dentro da pasta extraída. Se um atalho baixado for bloqueado, revise a origem antes de usar o comando equivalente.
 
 ```powershell
 # Windows
 & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
-codex
 ```
 
 ```sh
 # macOS ou Linux
 sh install.sh
+```
+
+Depois que o instalador terminar, **abra um terminal novo** na pasta do projeto:
+
+```sh
 codex
 ```
+
+Se usa o terminal integrado e o comando ainda carregar o PATH antigo, feche e reabra o VS Code. A instalação padrão já configura a integração; os launchers [NotDex.cmd](NotDex.cmd), [notdex.command](notdex.command) e [notdex.sh](notdex.sh) continuam disponíveis para uso direto ou portátil.
 
 ## Usar o painel
 
@@ -60,6 +73,8 @@ Quem tem Node 24+ no PATH pode encaminhar argumentos do Codex:
 node notdex.cjs -- resume
 node notdex.cjs --codex-home '/caminho/Codex Home' -- resume
 ```
+
+Na instalação padrão, o comando habitual também aceita os argumentos do Codex, por exemplo `codex resume --last`.
 
 ## De onde vêm as métricas
 
@@ -87,6 +102,20 @@ Se já existem hooks inline no TOML, o instalador usa essa representação, migr
 A ativação adiciona somente um diretório próprio de comandos e blocos identificados nos arquivos de inicialização do shell. Windows cobre PowerShell 5/7 e o PATH do usuário; macOS/Linux cobrem Bash e Zsh. Feche e reabra o aplicativo de terminal ou VS Code se ele ainda herdar o PATH antigo. Caminhos de sistema com precedência ou shells não configurados podem exigir colocar `CODEX_HOME/notdex/bin` primeiro no PATH. A remoção retira as entradas gerenciadas e preserva edições posteriores do usuário.
 
 O runtime fica em `CODEX_HOME/notdex`, normalmente `~/.codex/notdex`. Preferências do painel e arquivos não gerenciados permanecem após a remoção. Cache privado do Node e pacotes Linux compartilhados também permanecem.
+
+Abra um terminal novo após remover o NotDex para descartar o PATH mantido pela sessão anterior.
+
+## Resolver problemas
+
+| Sintoma | O que conferir |
+| --- | --- |
+| `codex` abre sem painel | Abra um terminal novo; reinicie o VS Code se necessário. No PowerShell, confira `Get-Command codex`; no Bash/Zsh, `command -v codex`. O comando integrado deve apontar para `CODEX_HOME/notdex/bin`. Aliases, funções ou caminhos de sistema podem ter precedência. |
+| Painel foi ocultado | Pressione **F12** para revelá-lo. Confira também o mínimo de 52 colunas × 12 linhas e, no macOS, tente **Fn+F12**. |
+| Aviso sobre hooks em JSON e TOML | Execute novamente o instalador atual. Ele consolida os hooks do perfil e guarda um backup do JSON. Não apague outros hooks manualmente. Se o aviso apontar outro projeto ou perfil, confira a camada indicada pelo Codex. |
+| Notificação não aparece ou fica sem som | Confira permissões de notificações, saída de áudio e Não perturbe. Jogos em tela cheia e o daemon de notificações Linux podem suprimir banner ou som. |
+| Métrica aparece como `N/D` | O Codex ainda não forneceu os dados necessários ou o histórico/modelo não permite um cálculo confiável. Confira a seção sobre a origem das métricas. |
+
+Ao [relatar um problema](https://github.com/n1imp/NotDex/issues), informe sistema, shell, versão do Codex, versão do NotDex e mensagem de erro. Remova credenciais, conteúdo de conversas e outros dados privados antes de anexar saídas.
 
 ## Execução e privacidade
 

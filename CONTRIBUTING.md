@@ -25,6 +25,8 @@ node --no-warnings test.cjs
 
 As dependências têm versões e integridade fixadas em `package-lock.json`; nenhum script de instalação é executado. Windows também usa PowerShell 5.1 nos testes. Os testes usam perfis temporários, ferramentas de desktop simuladas e PTY nativo; executar a suíte não instala o NotDex no seu perfil pessoal.
 
+Para conferir manualmente um perfil temporário sem alterar seus shells, use `node install.cjs --codex-home CAMINHO_TEMPORARIO --no-shell-integration`. Ao removê-lo, use `node uninstall.cjs --codex-home CAMINHO_TEMPORARIO --no-shell-integration`. O instalador padrão modifica o PATH do usuário e/ou os arquivos de inicialização dos shells; reserve-o para testes explícitos dessa integração.
+
 6. Envie a branch ao seu fork e abra um pull request para `main` no repositório original:
 
 ```sh
@@ -41,6 +43,8 @@ Informe o problema, a mudança e os testes executados. O CI testa Windows, macOS
 - Confirme o callback MCP antes do trabalho do worker. Clipboard, som e notificação não podem bloquear o transporte MCP.
 - Copie somente a resposta final; não exiba conteúdo da conversa na notificação.
 - Preserve outros hooks, configurações e arquivos do usuário na instalação e remoção.
+- Confira o comando normal `codex`, retomada de sessão e passagem direta de comandos não interativos. Evite recursão entre o launcher gerenciado e o executável original, inclusive com aliases de diretório e outros perfis.
+- Preserve codificação e permissões dos perfis de shell, edições posteriores e aprovações dos hooks. Teste instalação repetida e remoção usando homes temporários e registro Windows simulado.
 - Use fixtures sintéticas. Não publique credenciais, bancos locais, transcripts completos ou respostas privadas.
 - Documente as plataformas realmente testadas. Uma suíte verde não comprova banners, permissões ou som num desktop real.
 - Métricas precisam de registros reais ou fixtures equivalentes. Mostre `N/D` quando faltarem dados; US$ de referência não é cobrança da assinatura e quota da conta não é quota de um chat.
