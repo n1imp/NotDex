@@ -3,14 +3,11 @@ const path = require('node:path');
 const readline = require('node:readline');
 const { MetricsAccumulator } = require('./observability.cjs');
 
-async function getSessionMetrics(data) {
-  const result = {
-    title: '', input_tokens: null, cached_input_tokens: null, output_tokens: null,
-    total_tokens: null, cache_hit_pct: null, latency_ms: null, latency_is_estimate: false
-  };
+function getSessionMetadata(data, { includeTitle = true } = {}) {
+  const result = { title: '' };
   let transcript = data.transcript_path;
   if (data.session_id) {
-    try {
+    if (includeTitle) try {
       for (const line of fs.readFileSync(path.join(data.codex_root, 'session_index.jsonl'), 'utf8').split('\n')) {
         try {
           const entry = JSON.parse(line);
@@ -41,6 +38,17 @@ async function getSessionMetrics(data) {
     }
   }
   result.title ||= 'Codex';
+  result.transcript_path = transcript;
+  return result;
+}
+
+async function getSessionMetrics(data) {
+  const metadata = getSessionMetadata(data);
+  const result = {
+    title: metadata.title, input_tokens: null, cached_input_tokens: null, output_tokens: null,
+    total_tokens: null, cache_hit_pct: null, latency_ms: null, latency_is_estimate: false
+  };
+  const transcript = metadata.transcript_path;
 
   const metrics = new MetricsAccumulator({ sessionId: data.session_id });
   try {
@@ -63,7 +71,7 @@ async function getSessionMetrics(data) {
   return result;
 }
 
-module.exports = { getSessionMetrics };
+module.exports = { getSessionMetrics, getSessionMetadata };
 if (require.main === module) {
   (async () => {
     const data = JSON.parse(Buffer.from(process.argv[2], 'base64').toString('utf8'));

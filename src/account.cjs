@@ -3,7 +3,7 @@ const readline = require('node:readline');
 const { normalizeQuota } = require('./observability.cjs');
 
 class AccountClient {
-  constructor(codex, { timeoutMs = 15000, env = process.env } = {}) {
+  constructor(codex, { timeoutMs = 15000, startupTimeoutMs = 120000, env = process.env } = {}) {
     this.pending = new Map(); this.sequence = 0; this.timeoutMs = timeoutMs;
     this.child = spawn(codex.file, [...codex.args, 'app-server'], { env, windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
     this.lines = readline.createInterface({ input: this.child.stdout });
@@ -19,15 +19,16 @@ class AccountClient {
       this.pending.clear();
     };
     this.child.on('error', failed); this.child.on('exit', failed); this.child.stdin.on('error', failed);
-    this.ready = this.request('initialize', { clientInfo: { name: 'notdex_observability', version: '0.2.0' }, capabilities: { experimentalApi: true } }).then(() => {
+    // Cold Codex process startup runs in the background, independently of hook deadlines.
+    this.ready = this.request('initialize', { clientInfo: { name: 'notdex_observability', version: '0.2.0' }, capabilities: { experimentalApi: true } }, startupTimeoutMs).then(() => {
       this.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'initialized', params: {} }) + '\n');
     });
     this.ready.catch(() => {});
   }
-  request(method, params) {
+  request(method, params, timeoutMs = this.timeoutMs) {
     return new Promise((resolve, reject) => {
       const id = ++this.sequence;
-      const timer = setTimeout(() => { this.pending.delete(id); reject(Error('Codex account request timed out')); }, this.timeoutMs);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(Error('Codex account request timed out')); }, timeoutMs);
       this.pending.set(id, { resolve, reject, timer });
       try { this.child.stdin.write(JSON.stringify({ jsonrpc: '2.0', id, method, ...(params ? { params } : {}) }) + '\n'); }
       catch { clearTimeout(timer); this.pending.delete(id); reject(Error('Codex account connection unavailable')); }

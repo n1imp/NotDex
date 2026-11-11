@@ -4,7 +4,7 @@ Clipboard automático, notificações do último turno e painel de observabilida
 
 Instale uma vez e continue usando **`codex`**, **`codex resume`** ou **`codex fork`**. O painel é ativado automaticamente nas sessões interativas.
 
-**Versão atual: [v0.2.0-preview.3](https://github.com/n1imp/NotDex/releases/tag/v0.2.0-preview.3)** · [Baixar ZIP](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.3/NotDex.zip) · [Relatar problema](https://github.com/n1imp/NotDex/issues)
+**Versão atual: [v0.2.0-preview.4](https://github.com/n1imp/NotDex/releases/tag/v0.2.0-preview.4)** · [Baixar ZIP](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.4/NotDex.zip) · [Relatar problema](https://github.com/n1imp/NotDex/issues)
 
 Ao terminar um turno, copia a resposta final e mostra uma notificação com o título da sessão e **métricas daquele turno**. O conteúdo da resposta não aparece na notificação. O painel permite alternar entre turno, última requisição e sessão, sem usar um modelo para calcular os dados.
 
@@ -13,7 +13,7 @@ Ao terminar um turno, copia a resposta final e mostra uma notificação com o t�
 ## Instalar
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.167.0+** instalado e disponível no PATH.
-2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.3/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.4/NotDex.zip) e **extraia toda a pasta**.
 3. Execute o instalador:
 
 | Sistema | Instalar | Usar após instalar |
@@ -23,7 +23,7 @@ Ao terminar um turno, copia a resposta final e mostra uma notificação com o t�
 | Linux com desktop | `sh install.sh` | Abra um terminal novo e rode `codex` |
 
 4. Feche e reabra o terminal. Na pasta do seu projeto, execute `codex`.
-5. Se o Codex solicitar revisão, abra **/hooks** e revise/confie nos dois hooks **NotDex**. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
+5. Se o Codex solicitar revisão, abra **/hooks** e revise os callbacks **NotDex** de início da sessão, envio e conclusão do turno. Essa aprovação pertence à [política de hooks do Codex](https://learn.chatgpt.com/docs/hooks).
 
 O ZIP inclui as dependências com versões e hashes fixados. O instalador reutiliza Node.js 24+ ou baixa uma cópia privada de nodejs.org, também com SHA-256 fixado. A instalação pelo ZIP não precisa de npm nem compilação. Linux pede consentimento antes de instalar ferramentas de desktop ausentes.
 
@@ -59,13 +59,21 @@ O painel começa no canto superior direito. Posição, visibilidade e escopo fic
 
 | Tecla | Ação |
 | --- | --- |
+| **F9** | Abrir o command center nativo do Codex; liberar a navegação e suspender o painel |
 | **F12** | Abrir/fechar os controles; revelar um painel oculto |
 | **Setas**, com controles abertos | Mover dentro do terminal |
 | **Tab**, com controles abertos | Alternar turno, requisição e sessão |
 | **H**, com controles abertos | Ocultar |
 | **Esc**, com controles abertos | Encerrar o posicionamento |
+| **Digitar ou colar texto** | Encerrar o posicionamento e encaminhar a entrada ao Codex |
 
-O terminal precisa de pelo menos **52 colunas × 12 linhas**; em tamanhos menores, o painel fica oculto. No macOS, pode ser necessário **Fn+F12**. Um atalho reservado pelo terminal ou sistema precisa ser liberado pelo usuário.
+**F9** é configurado somente na execução pelo NotDex, por meio de `tui.keymap.global.open_agents`; o arquivo de atalhos do usuário é preservado. Se F9 já aparece num atalho explícito do perfil, projeto ou argumentos `-c`, o NotDex preserva essa configuração e mostra `/agents` no rodapé. Argumentos `-c` explícitos do usuário têm precedência. Ao navegar com F9 gerenciado pelo NotDex, o painel cede espaço ao command center. Enter/Esc devolvem a apresentação; F12 também revela o painel. A suspensão é temporária e não altera a visibilidade salva.
+
+A troca de sessão limpa as métricas anteriores. A identificação vem dos eventos do Codex ou de um `codex resume ID` explícito; o NotDex não escolhe a conversa mais recente do disco. Quando o Codex não entrega `SessionStart` porque o MCP ainda está iniciando, os tokens aguardam o próximo evento de envio/conclusão. `Aguardando identificacao da sessao` indica esse estado. Ao trocar de chat por outra entrada nativa, como `/agents`, a vinculação depende do evento do Codex. Compactação automática não muda a seleção do painel.
+
+O painel compõe texto e métricas numa única passagem e atualiza somente as linhas alteradas, sem apagar a tela a cada amostra.
+
+O terminal precisa de pelo menos **52 colunas × 12 linhas**; em tamanhos menores, o painel fica oculto. No macOS, pode ser necessário **Fn+F9/F12**. Um atalho reservado pelo terminal ou sistema precisa ser liberado pelo usuário.
 
 Quem tem Node 24+ no PATH pode encaminhar argumentos do Codex:
 
@@ -95,7 +103,7 @@ Feche as sessões abertas pelo NotDex antes de atualizar, pois o sistema pode ma
 - **Remover no macOS:** [uninstall.command](uninstall.command).
 - **Remover no macOS/Linux:** `sh uninstall.sh`.
 
-O instalador preserva configurações, hooks e aprovações alheias ao NotDex. Migra versões antigas para um servidor MCP residente e dois callbacks; reinicie e revise os novos hooks em **/hooks**. Não há alteração automática da confiança.
+O instalador preserva configurações, hooks e aprovações alheias ao NotDex. Migra versões antigas para um servidor MCP residente e três callbacks (`SessionStart`, `UserPromptSubmit`, `Stop`); reinicie e revise os novos hooks em **/hooks**. Não há alteração automática da confiança.
 
 Se já existem hooks inline no TOML, o instalador usa essa representação, migra as definições do JSON e guarda uma cópia privada em `CODEX_HOME/notdex/hooks-backup-*.json`. Assim evita o aviso de duas representações na mesma camada. Hooks migrados de terceiros permanecem ao desinstalar; definições ambíguas ou blocos gerenciados editados são rejeitados para revisão.
 

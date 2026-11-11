@@ -2,11 +2,13 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 const { randomBytes, randomUUID } = require('node:crypto');
-const { OverlayState, InputRouter, composeFrame, clean } = require('./overlay.cjs');
+const { OverlayState, InputRouter, clean } = require('./overlay.cjs');
+const { FrameRenderer } = require('./renderer.cjs');
 const { createEventReceiver } = require('./bridge.cjs');
 const { TranscriptMonitor } = require('./monitor.cjs');
 const { AccountClient } = require('./account.cjs');
 const { resolveCodex } = require('./codex.cjs');
+const { canBindCommandCenter } = require('./navigation.cjs');
 
 function loadSettings(file) {
   try {
@@ -34,29 +36,36 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   if (!input.isTTY || !output.isTTY) throw Error('Open NotDex in an interactive terminal. Use the normal Codex command for piped/noninteractive output.');
   const pty = require('@lydell/node-pty');
   const { Terminal } = require('@xterm/headless');
-  const { SerializeAddon } = require('@xterm/addon-serialize');
   const root = fs.realpathSync(codexHome);
   const preferences = path.join(root, 'notdex/overlay-settings.json');
   const state = new OverlayState(loadSettings(preferences));
+  state.commandCenterShortcut = canBindCommandCenter(root, process.cwd(), args);
   const virtual = new Terminal({ cols: output.columns || 100, rows: output.rows || 30, scrollback: 2000, allowProposedApi: true });
-  const serialize = new SerializeAddon(); virtual.loadAddon(serialize);
-  let child, stopped = false, blocked = false, renderTimer, inputTimer, saveTimer, showCursor = true, accountSnapshot;
+  const renderer = new FrameRenderer();
+  let child, stopped = false, blocked = false, renderTimer, inputTimer, saveTimer, showCursor = true, accountSnapshot, navigationPending = false;
   const monitor = new TranscriptMonitor({ codexRoot: root, onChange: () => schedule() });
   const token = randomBytes(32).toString('hex');
-  const receiver = createEventReceiver({ token, onEvent: data => { if (monitor.attach(data)) monitor.tick().catch(() => {}); } });
+  const receiver = createEventReceiver({ token, onEvent: data => {
+    if (data.event === 'stop' && (navigationPending || state.suspended || monitor.data && data.session_id !== monitor.data.session_id)) return;
+    if (data.event === 'start' || data.event === 'prompt') navigationPending = false;
+    if (monitor.attach(data)) monitor.tick().catch(() => {});
+  } });
   receiver.requestTimeout = 1500; receiver.headersTimeout = 1500;
   await new Promise((resolve, reject) => { receiver.once('error', reject); receiver.listen(0, '127.0.0.1', resolve); });
   const env = { ...parentEnv, CODEX_HOME: root, TERM: parentEnv.TERM || 'xterm-256color',
     NOTDEX_OVERLAY_ENDPOINT: 'http://127.0.0.1:' + receiver.address().port + '/event', NOTDEX_OVERLAY_TOKEN: token };
-  const account = new AccountClient(codex, { env: { ...parentEnv, CODEX_HOME: root } });
+  let account;
   let refreshing = false;
   const refresh = async () => {
     if (refreshing || stopped) return; refreshing = true;
-    try { accountSnapshot = await account.read(); schedule(); } catch {} finally { refreshing = false; }
+    try {
+      account ||= new AccountClient(codex, { env: { ...parentEnv, CODEX_HOME: root } });
+      accountSnapshot = await account.read(); schedule();
+    } catch { account?.close(); account = null; } finally { refreshing = false; }
   };
   const accountTimer = setInterval(refresh, 60000); refresh();
   const clockTimer = setInterval(() => schedule(), 1000);
-  const router = new InputRouter(state, () => ({ cols: virtual.cols, rows: virtual.rows }));
+  const router = new InputRouter(state, () => ({ cols: virtual.cols, rows: virtual.rows }), () => { navigationPending = true; monitor.detach(); });
   function snapshot() {
     const result = monitor.snapshot();
     if (accountSnapshot) {
@@ -70,7 +79,8 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   function draw() {
     renderTimer = null;
     if (stopped || blocked) return;
-    if (!output.write(composeFrame(virtual, serialize, state, snapshot(), { showCursor }))) {
+    const frame = renderer.frame(virtual, state, snapshot(), { showCursor, suppressed: state.suspended });
+    if (frame && !output.write(frame)) {
       blocked = true; child?.pause();
       output.once('drain', () => { blocked = false; if (!stopped) { child?.resume(); schedule(); } });
     }
@@ -98,7 +108,7 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
       if (stopped) return; stopped = true;
       for (const timer of [renderTimer, inputTimer, saveTimer, accountTimer, clockTimer]) clearTimeout(timer);
       try { saveSettings(preferences, state.saved()); } catch {}
-      monitor.close(); account.close(); receiver.closeAllConnections(); receiver.close();
+      monitor.close(); account?.close(); receiver.closeAllConnections(); receiver.close();
       input.off('data', inputData); output.off('resize', resize); output.off('error', outputError);
       process.off('SIGTERM', terminate); process.off('SIGHUP', terminate);
       process.off('SIGINT', interrupt);
@@ -114,7 +124,15 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
     process.on('SIGINT', interrupt);
     try {
       output.write('\x1b[?1049h'); input.setEncoding('utf8'); input.setRawMode(true); input.resume();
-      child = pty.spawn(codex.file, [...codex.args, ...args], { cols: virtual.cols, rows: virtual.rows, cwd: process.cwd(), env, name: 'xterm-256color' });
+      const overrides = state.commandCenterShortcut ? ['-c', 'tui.keymap.global.open_agents=["f9"]'] : [];
+      const owner = loadSettings(path.join(root, 'notdex/manifest.json'));
+      if (owner.app === 'NotDex' && owner.format_version === 2) {
+        for (const key of ['NOTDEX_OVERLAY_ENDPOINT', 'NOTDEX_OVERLAY_TOKEN']) overrides.push('-c', 'mcp_servers.notdex.env.' + key + '=' + JSON.stringify(env[key]));
+      }
+      if (args[0] === 'resume' && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(args[1] || '')) {
+        monitor.attach({ event: 'start', session_id: args[1] }); monitor.tick().catch(() => {});
+      }
+      child = pty.spawn(codex.file, [...codex.args, ...overrides, ...args], { cols: virtual.cols, rows: virtual.rows, cwd: process.cwd(), env, name: 'xterm-256color' });
       virtual.onData(forward);
       virtual.onTitleChange(title => { if (!stopped) output.write('\x1b]0;' + clean(title) + '\x07'); });
       for (const [final, visible] of [['h', true], ['l', false]]) virtual.parser.registerCsiHandler({ prefix: '?', final }, params => {
@@ -151,7 +169,7 @@ async function main(arguments_ = process.argv.slice(2)) {
     for (let i = 0; i < arguments_.length; i++) {
       if (arguments_[i] === '--codex' && arguments_[i + 1]) selected = arguments_[++i];
       else if (arguments_[i] === '--codex-home' && arguments_[i + 1]) home = arguments_[++i];
-      else if (arguments_[i] === '--help') { console.log('NotDex [--codex PATH] [--codex-home PATH] [-- CODEX_ARGS]\nF12: controls; arrows: move; Tab: session/turn/request; H: hide; Esc: finish positioning.'); return; }
+      else if (arguments_[i] === '--help') { console.log('NotDex [--codex PATH] [--codex-home PATH] [-- CODEX_ARGS]\nF9: Codex command center; F12: overlay controls; arrows: move; Tab: session/turn/request; H: hide; Esc: finish positioning. Typing releases overlay controls.'); return; }
       else if (arguments_[i] === '--') { args.push(...arguments_.slice(i + 1)); break; }
       else args.push(arguments_[i]);
     }
