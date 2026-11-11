@@ -4,6 +4,44 @@ const { FrameRenderer } = require('../src/renderer.cjs');
 const { OverlayState } = require('../src/overlay.cjs');
 const write = (terminal, data) => new Promise(resolve => terminal.write(data, resolve));
 
+test('ConPTY white prompt text uses the verified accent or the terminal default foreground', async t => {
+  const source = new Terminal({ cols: 80, rows: 20, allowProposedApi: true });
+  const target = new Terminal({ cols: 80, rows: 20, allowProposedApi: true });
+  t.after(() => { source.dispose(); target.dispose(); });
+  await write(source, '\x1b[48;2;41;41;41m\x1b[1;97m› \x1b[22mUSER\x1b[33m GOLD\x1b[0m\x1b[10;1H');
+  const state = new OverlayState({ visible: false }), renderer = new FrameRenderer();
+  await write(target, renderer.frame(source, state, {}, { theme: { accent: [90, 0, 120] } }));
+  assert.equal(target.buffer.active.getLine(0).getCell(2).getFgColor(), 0x5a0078);
+  assert.equal(target.buffer.active.getLine(0).getCell(8).getFgColor(), 3);
+  await write(target, renderer.frame(source, state, {}));
+  assert(target.buffer.active.getLine(0).getCell(2).isFgDefault());
+});
+
+test('verified submitted prompts use contrasted foreground without changing assistant, composer or source cells', async t => {
+  const { TerminalTheme } = require('../src/theme.cjs');
+  const source = new Terminal({ cols: 80, rows: 20, allowProposedApi: true });
+  const target = new Terminal({ cols: 80, rows: 20, allowProposedApi: true });
+  t.after(() => { source.dispose(); target.dispose(); });
+  await write(target, '\x1b[?1049h');
+  const fill = row => `\x1b[${row};1H\x1b[48;2;41;41;41m\x1b[2K`;
+  await write(source, '\x1b[?1049h' + fill(1) + fill(2) + '\x1b[1;2m› \x1b[22mUSER 漢字' + fill(3) + '  continued' + fill(4) + '\x1b[0m\x1b[6;1HASSISTANT\x1b[10;1H\x1b[48;2;10;10;10m\x1b[2K\x1b[1;2m› \x1b[22mDRAFT');
+  const theme = new TerminalTheme();
+  theme.consume('\x1b]10;rgb:ff/ff/ff\x07'); theme.consume('\x1b]11;rgb:00/00/00\x07');
+  const state = new OverlayState({ visible: false }), renderer = new FrameRenderer();
+  await write(target, renderer.frame(source, state, {}, { theme }));
+  const cell = target.buffer.active.getLine(1).getCell(2);
+  assert(cell.isFgRGB()); assert(cell.isBgDefault());
+  assert.equal(cell.getFgColor(), theme.accent.reduce((v, n) => v * 256 + n, 0));
+  assert.equal(target.buffer.active.getLine(2).getCell(2).getFgColor(), cell.getFgColor());
+  assert(target.buffer.active.getLine(5).getCell(0).isFgDefault());
+  assert.equal(target.buffer.active.getLine(9).getCell(2).getBgColor(), 0x0a0a0a);
+  assert.equal(source.buffer.active.getLine(1).getCell(2).getBgColor(), 0x292929);
+  await write(target, renderer.frame(source, state, {}, {}));
+  assert(target.buffer.active.getLine(1).getCell(2).isBold());
+  assert(target.buffer.active.getLine(1).getCell(2).isBgDefault());
+  assert(target.buffer.active.getLine(1).getCell(2).isFgDefault());
+});
+
 test('unchanged frames emit nothing; metric changes never clear the screen or repaint the chat', async t => {
   const source = new Terminal({ cols: 100, rows: 25, allowProposedApi: true }); t.after(() => source.dispose());
   await write(source, '\x1b[HCHAT_CONTENT');

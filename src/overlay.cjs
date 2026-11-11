@@ -30,9 +30,20 @@ const ARROWS = { '\x1b[A': [0, -1], '\x1b[B': [0, 1], '\x1b[C': [1, 0], '\x1b[D'
 const KEYS = [F12, F9, PASTE_START, PASTE_END, ...Object.keys(ARROWS)];
 
 class InputRouter {
-  constructor(state, size, onCommandCenter = () => {}) { this.state = state; this.size = size; this.onCommandCenter = onCommandCenter; this.buffer = ''; this.wireBuffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
+  constructor(state, size, onCommandCenter = () => {}, { context, onColorReport, colorReportExpected = () => false } = {}) { this.state = state; this.size = size; this.onCommandCenter = onCommandCenter; this.context = context; this.onColorReport = onColorReport; this.colorReportExpected = colorReportExpected; this.buffer = ''; this.wireBuffer = ''; this.pasting = false; this.windowsKeys = new Set(); }
   commandCenter() { this.state.editing = false; this.state.suspended = true; this.onCommandCenter(); }
+  navigate(key, windows = false) {
+    const context = this.context?.();
+    if (this.state.editing) return;
+    if (context?.kind === 'center' && !context.editing && ['right', 'escape'].includes(key)) return '';
+    if (key === 'escape' && context?.canGoDashboard && this.state.commandCenterShortcut) {
+      this.commandCenter();
+      return windows ? '\x1b[120;67;0;1;0;1_\x1b[120;67;0;0;0;1_' : F9;
+    }
+  }
+  resumePresentation() { if (!this.context || this.context()?.kind === 'chat') this.state.suspended = false; }
   push(data) {
+    if (this.colorUntil && Date.now() > this.colorUntil) { this.buffer = ''; this.colorUntil = 0; }
     this.wireBuffer += data;
     const lastEscape = this.wireBuffer.lastIndexOf('\x1b');
     const tail = this.wireBuffer.slice(lastEscape);
@@ -54,6 +65,19 @@ class InputRouter {
         for (let n = 1; n < PASTE_END.length; n++) if (this.buffer.endsWith(PASTE_END.slice(0, n))) keep = n;
         forward += this.buffer.slice(0, this.buffer.length - keep); this.buffer = this.buffer.slice(this.buffer.length - keep); break;
       }
+      if (this.onColorReport && this.buffer.startsWith('\x1b]') && (this.colorReportExpected() || /^\x1b\]1[01];rgb:/i.test(this.buffer))) {
+        const report = /^\x1b\][^\x07]*?(?:\x07|\x1b\\)/.exec(this.buffer);
+        if (report) {
+          if (!this.onColorReport(report[0])) forward += report[0];
+          this.colorUntil = 0; this.buffer = this.buffer.slice(report[0].length); continue;
+        }
+        const color = /^\x1b\]1[01];rgb:[0-9a-f/]*/i.exec(this.buffer);
+        const header = ['\x1b]10;rgb:', '\x1b]11;rgb:'].some(value => value.startsWith(this.buffer));
+        if ((color?.[0] === this.buffer || header) && this.buffer.length < 128) { this.colorUntil ||= Date.now() + 1000; break; }
+        // Abandoned metadata must not consume the next real key, especially Ctrl+C.
+        if (color) { this.colorUntil = 0; this.buffer = this.buffer.slice(color[0].length); continue; }
+        this.colorUntil = 0;
+      }
       const key = KEYS.find(value => this.buffer.startsWith(value));
       if (key) {
         this.buffer = this.buffer.slice(key.length);
@@ -61,6 +85,7 @@ class InputRouter {
         else if (key === F12) { this.state.visible = true; this.state.suspended = false; this.state.editing = !this.state.editing; }
         else if (key === F9) { if (this.state.commandCenterShortcut) this.commandCenter(); else this.state.editing = false; forward += key; }
         else if (this.state.editing && ARROWS[key]) { const { cols, rows } = this.size(); this.state.move(...ARROWS[key], cols, rows); }
+        else if (ARROWS[key]?.[0] === 1 && this.navigate('right') !== undefined) {}
         else forward += key;
         continue;
       }
@@ -75,7 +100,9 @@ class InputRouter {
             const [, vk, down, modifiers, repeats] = windows;
             if (down === '0' && this.windowsKeys.delete(vk)) handled = true;
             else if (down === '1' && !(Number(modifiers) & 31)) {
-              if (vk === '120' && this.state.commandCenterShortcut) this.commandCenter();
+              const navigation = this.navigate(vk === '39' ? 'right' : vk === '27' ? 'escape' : null, true);
+              if (navigation !== undefined) { forward += navigation; handled = true; }
+              else if (vk === '120' && this.state.commandCenterShortcut) this.commandCenter();
               else if (vk === '123') { this.state.visible = true; this.state.suspended = false; this.state.editing = !this.state.editing; handled = true; }
               else if (this.state.editing) {
                 const arrows = { 37: [-1, 0], 38: [0, -1], 39: [1, 0], 40: [0, 1] };
@@ -86,7 +113,7 @@ class InputRouter {
               if (handled) this.windowsKeys.add(vk);
               else {
                 this.state.editing = false;
-                if (vk === '13' || vk === '27') this.state.suspended = false;
+                if (vk === '13' || vk === '27') this.resumePresentation();
               }
             }
           }
@@ -99,7 +126,7 @@ class InputRouter {
       else if (this.state.editing && ['h', 'H'].includes(char)) { this.state.visible = false; this.state.editing = false; }
       else {
         this.state.editing = false;
-        if (char === '\r' || char === '\n') this.state.suspended = false;
+        if (char === '\r' || char === '\n') this.resumePresentation();
         forward += char;
       }
     }
@@ -108,10 +135,17 @@ class InputRouter {
   flush() {
     if (this.wireBuffer === '\x1b') { this.buffer += this.wireBuffer; this.wireBuffer = ''; }
     if (this.pasting) return '';
+    if (this.colorUntil) {
+      if (Date.now() > this.colorUntil) { this.buffer = ''; this.colorUntil = 0; }
+      return '';
+    }
     if (/^\x1b(?:\[[0-?]*[ -/]*|O)$/.test(this.buffer)) return '';
     const value = this.buffer; this.buffer = '';
     if (value === '\x1b' && this.state.editing) { this.state.editing = false; return ''; }
-    if (value === '\x1b') this.state.suspended = false;
+    if (value === '\x1b') {
+      const navigation = this.navigate('escape'); if (navigation !== undefined) return navigation;
+      this.resumePresentation();
+    }
     return value;
   }
 }

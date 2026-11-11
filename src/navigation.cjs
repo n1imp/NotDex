@@ -35,4 +35,18 @@ function canBindCommandCenter(codexHome, cwd, args = []) {
   return true;
 }
 
-module.exports = { canBindCommandCenter };
+function navigationContext(terminal, showCursor) {
+  const buffer = terminal.buffer.active;
+  const lines = Array.from({ length: terminal.rows }, (_, y) => buffer.getLine(buffer.viewportY + y)?.translateToString(true) || '');
+  const footer = lines.slice(-3).join('\n');
+  const composer = buffer.getLine(buffer.baseY + buffer.cursorY)?.translateToString(true).trim();
+  const chatFooter = footer.includes('← for agents') && footer.includes('for shortcuts');
+  const empty = composer === '›' || composer === '› Ask Codex to do anything';
+  if (chatFooter && (showCursor && composer?.startsWith('›') || /esc.*interrupt/i.test(footer))) return { kind: 'chat', canGoDashboard: !!showCursor && empty && !/esc.*interrupt/i.test(footer) };
+  // shortcut: native Codex 0.167 UI labels; unknown layouts keep their original input behavior.
+  const center = lines.findIndex((line, y) => /^\s*(?:Agent|Project) command center\s+Group:/.test(line) && !!buffer.getLine(buffer.viewportY + y)?.getCell(line.search(/\S/))?.isBold());
+  if (center >= 0) return { kind: 'center', editing: lines.slice(center + 1, center + 9).some(line => /^\s*(?:Search ›|Rename ›|Task shortcuts)/.test(line)) };
+  return chatFooter ? { kind: 'chat', canGoDashboard: false } : { kind: 'unknown' };
+}
+
+module.exports = { canBindCommandCenter, navigationContext };

@@ -5,6 +5,62 @@ const { SerializeAddon } = require('@xterm/addon-serialize');
 const { OverlayState, InputRouter, composeFrame, panelLines } = require('../src/overlay.cjs');
 const write = (terminal, data) => new Promise(resolve => terminal.write(data, resolve));
 
+test('center navigation requires Enter; Esc stays on dashboard; idle-chat Esc opens dashboard; Ctrl+C passes through', () => {
+  const state = new OverlayState(); state.suspended = true;
+  let context = { kind: 'center', editing: false }, opened = 0;
+  const input = new InputRouter(state, () => ({ cols: 100, rows: 30 }), () => opened++, { context: () => context });
+  assert.equal(input.push('\x1b[C'), '');
+  assert.equal(input.push('\r'), '\r'); assert(state.suspended);
+  input.push('\x1b'); assert.equal(input.flush(), ''); assert(state.suspended);
+  assert.equal(input.push('\x03'), '\x03');
+  context = { kind: 'center', editing: true };
+  assert.equal(input.push('\x1b[C'), '\x1b[C');
+  input.push('\x1b'); assert.equal(input.flush(), '\x1b'); assert(state.suspended);
+  context = { kind: 'chat', canGoDashboard: true };
+  input.push('\x1b'); assert.equal(input.flush(), '\x1b[20~'); assert.equal(opened, 1);
+  context = { kind: 'chat', canGoDashboard: false };
+  input.push('\x1b'); assert.equal(input.flush(), '\x1b');
+});
+
+test('Windows center keys and fragmented color reports preserve editor, paste and quit input', () => {
+  const state = new OverlayState(), reports = [];
+  const input = new InputRouter(state, () => ({ cols: 100, rows: 30 }), () => {}, {
+    context: () => ({ kind: 'center', editing: false }), onColorReport: value => { reports.push(value); return true; }, colorReportExpected: () => true
+  });
+  const right = '\x1b[39;0;0;1;0;1_', rightUp = '\x1b[39;0;0;0;0;1_';
+  assert.equal(input.push(right + rightUp), '');
+  const report = '\x1b]10;rgb:ffff/eeee/dddd\x1b\\';
+  for (const char of report) assert.equal(input.push(char), '');
+  assert.deepEqual(reports, [report]);
+  const paste = '\x1b[200~' + report + '\x1b[201~';
+  assert.equal(input.push(paste), paste); assert.equal(reports.length, 1);
+});
+
+test('a late fragmented color report never becomes composer text after the query deadline', () => {
+  let pending = true; const reports = [];
+  const input = new InputRouter(new OverlayState(), () => ({ cols: 100, rows: 30 }), () => {}, { colorReportExpected: () => pending, onColorReport: data => { reports.push(data); return true; } });
+  assert.equal(input.push('\x1b]11;rgb:00/'), ''); pending = false;
+  assert.equal(input.flush(), '');
+  assert.equal(input.push('00/00\x07'), ''); assert.equal(reports.length, 1);
+});
+
+test('abandoned color reports never swallow Ctrl+C or later typing', t => {
+  t.mock.timers.enable({ apis: ['Date'] });
+  const make = () => new InputRouter(new OverlayState(), () => ({ cols: 100, rows: 30 }), () => {}, { colorReportExpected: () => false, onColorReport: () => true });
+  const input = make();
+  assert.equal(input.push('\x1b]11;rgb:00/'), '');
+  assert.equal(input.push('\x03hello'), '\x03hello');
+  for (const key of ['\x1b[C', '\x1b[67;3;3;1;8;1_']) {
+    const interrupted = make(); interrupted.push('\x1b]11;rgb:00/');
+    assert.equal(interrupted.push(key), key);
+  }
+  const expired = make();
+  expired.push('\x1b]11;rgb:00/');
+  t.mock.timers.tick(1001);
+  assert.equal(expired.flush(), '');
+  assert.equal(expired.push('abc'), 'abc');
+});
+
 test('a user-owned F9 binding is forwarded without suspending the overlay', () => {
   const state = new OverlayState(); state.commandCenterShortcut = false;
   const input = new InputRouter(state, () => ({ cols: 100, rows: 30 }));

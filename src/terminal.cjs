@@ -8,7 +8,8 @@ const { createEventReceiver } = require('./bridge.cjs');
 const { TranscriptMonitor } = require('./monitor.cjs');
 const { AccountClient } = require('./account.cjs');
 const { resolveCodex } = require('./codex.cjs');
-const { canBindCommandCenter } = require('./navigation.cjs');
+const { canBindCommandCenter, navigationContext } = require('./navigation.cjs');
+const { TerminalTheme } = require('./theme.cjs');
 
 function loadSettings(file) {
   try {
@@ -42,7 +43,8 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   state.commandCenterShortcut = canBindCommandCenter(root, process.cwd(), args);
   const virtual = new Terminal({ cols: output.columns || 100, rows: output.rows || 30, scrollback: 2000, allowProposedApi: true });
   const renderer = new FrameRenderer();
-  let child, stopped = false, blocked = false, renderTimer, inputTimer, saveTimer, showCursor = true, accountSnapshot, navigationPending = false;
+  let child, stopped = false, blocked = false, renderTimer, inputTimer, saveTimer, showCursor = true, accountSnapshot, navigationPending = false, awaitingCenter = false;
+  const theme = new TerminalTheme({ output: data => { if (!stopped) output.write(data); }, forward: data => { if (!stopped) child?.write(data); }, changed: () => schedule(), enabled: parentEnv.NO_COLOR === undefined && parentEnv.TERM !== 'dumb' });
   const monitor = new TranscriptMonitor({ codexRoot: root, onChange: () => schedule() });
   const token = randomBytes(32).toString('hex');
   const receiver = createEventReceiver({ token, onEvent: data => {
@@ -65,7 +67,9 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   };
   const accountTimer = setInterval(refresh, 60000); refresh();
   const clockTimer = setInterval(() => schedule(), 1000);
-  const router = new InputRouter(state, () => ({ cols: virtual.cols, rows: virtual.rows }), () => { navigationPending = true; monitor.detach(); });
+  const router = new InputRouter(state, () => ({ cols: virtual.cols, rows: virtual.rows }), () => { navigationPending = true; awaitingCenter = true; monitor.detach(); }, {
+    context: () => navigationContext(virtual, showCursor), onColorReport: data => theme.consume(data), colorReportExpected: () => theme.expecting
+  });
   function snapshot() {
     const result = monitor.snapshot();
     if (accountSnapshot) {
@@ -79,7 +83,10 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   function draw() {
     renderTimer = null;
     if (stopped || blocked) return;
-    const frame = renderer.frame(virtual, state, snapshot(), { showCursor, suppressed: state.suspended });
+    const context = navigationContext(virtual, showCursor);
+    if (context.kind === 'center') { if (!state.editing) state.suspended = true; awaitingCenter = false; }
+    else if (context.kind === 'chat' && !awaitingCenter) state.suspended = false;
+    const frame = renderer.frame(virtual, state, snapshot(), { showCursor, suppressed: state.suspended, theme });
     if (frame && !output.write(frame)) {
       blocked = true; child?.pause();
       output.once('drain', () => { blocked = false; if (!stopped) { child?.resume(); schedule(); } });
@@ -94,6 +101,7 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
   const inputData = data => {
     const before = JSON.stringify(state.saved()) + state.editing;
     forward(router.push(data));
+    if (!state.suspended) awaitingCenter = false;
     clearTimeout(inputTimer); inputTimer = setTimeout(() => { forward(router.flush()); schedule(); }, 50);
     if (before !== JSON.stringify(state.saved()) + state.editing) { persist(); schedule(); }
   };
@@ -134,6 +142,10 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
       }
       child = pty.spawn(codex.file, [...codex.args, ...overrides, ...args], { cols: virtual.cols, rows: virtual.rows, cwd: process.cwd(), env, name: 'xterm-256color' });
       virtual.onData(forward);
+      for (const slot of [10, 11]) virtual.parser.registerOscHandler(slot, data => {
+        if (data !== '?') return false;
+        theme.query(slot, true); return true;
+      });
       virtual.onTitleChange(title => { if (!stopped) output.write('\x1b]0;' + clean(title) + '\x07'); });
       for (const [final, visible] of [['h', true], ['l', false]]) virtual.parser.registerCsiHandler({ prefix: '?', final }, params => {
         for (const mode of params.flat()) {
@@ -157,7 +169,8 @@ async function runTerminal({ codex, args = [], codexHome, input = process.stdin,
         if (process.platform === 'win32') { try { child.kill(); } catch {} }
         cleanup(signal ? 128 + signal : Number.isInteger(exitCode) ? exitCode : 1);
       });
-      input.on('data', inputData); output.on('resize', resize); schedule();
+      input.on('data', inputData); output.on('resize', resize);
+      theme.query(10); theme.query(11); schedule();
     } catch (error) { try { child?.kill(); } catch {} cleanup(1, error); }
   });
 }

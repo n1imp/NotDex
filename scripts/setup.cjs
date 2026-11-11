@@ -9,7 +9,7 @@ const { prepareHooks } = require('./hooks-config.cjs');
 const { realEnvironment } = require('../src/cli.cjs');
 
 const runtimeFiles = ['THIRD_PARTY_NOTICES.txt', 'notificar.ps1', 'notificar-metricas.cjs', 'desktop.cjs', 'notificar-unix.cjs', 'notificar-unix-worker.cjs', 'notificar-windows.cjs',
-  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'renderer.cjs', 'navigation.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs', 'cli.cjs'];
+  'observability.cjs', 'prices.cjs', 'notdex-mcp.cjs', 'mission-worker.cjs', 'bridge.cjs', 'terminal.cjs', 'overlay.cjs', 'renderer.cjs', 'navigation.cjs', 'theme.cjs', 'account.cjs', 'monitor.cjs', 'codex.cjs', 'cli.cjs'];
 const ownedFiles = [...runtimeFiles, 'node-path.txt', 'codex-target.json'];
 const repo = path.dirname(__dirname);
 
