@@ -4,7 +4,7 @@ Clipboard automático, notificações do último turno e painel de observabilida
 
 Instale uma vez e continue usando **`codex`**, **`codex resume`** ou **`codex fork`**. O painel é ativado automaticamente nas sessões interativas.
 
-**Versão atual: [v0.2.0-preview.4](https://github.com/n1imp/NotDex/releases/tag/v0.2.0-preview.4)** · [Baixar ZIP](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.4/NotDex.zip) · [Relatar problema](https://github.com/n1imp/NotDex/issues)
+**Versão atual: [v0.2.0-preview.5](https://github.com/n1imp/NotDex/releases/tag/v0.2.0-preview.5)** · [Baixar ZIP](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.5/NotDex.zip) · [Relatar problema](https://github.com/n1imp/NotDex/issues)
 
 Ao terminar um turno, copia a resposta final e mostra uma notificação com o título da sessão e **métricas daquele turno**. O conteúdo da resposta não aparece na notificação. O painel permite alternar entre turno, última requisição e sessão, sem usar um modelo para calcular os dados.
 
@@ -13,7 +13,7 @@ Ao terminar um turno, copia a resposta final e mostra uma notificação com o t�
 ## Instalar
 
 1. Tenha o [Codex CLI](https://developers.openai.com/codex/cli/) **0.167.0+** instalado e disponível no PATH.
-2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.4/NotDex.zip) e **extraia toda a pasta**.
+2. [Baixe NotDex.zip](https://github.com/n1imp/NotDex/releases/download/v0.2.0-preview.5/NotDex.zip) e **extraia toda a pasta**.
 3. Execute o instalador:
 
 | Sistema | Instalar | Usar após instalar |
@@ -65,9 +65,17 @@ O painel começa no canto superior direito. Posição, visibilidade e escopo fic
 | **Tab**, com controles abertos | Alternar turno, requisição e sessão |
 | **H**, com controles abertos | Ocultar |
 | **Esc**, com controles abertos | Encerrar o posicionamento |
+| **Enter**, na lista de sessões | Abrir a sessão selecionada; seta direita não abre |
+| **Esc**, no chat vazio e ocioso | Voltar ao dashboard, quando F9 está disponível ao NotDex |
+| **Esc**, no dashboard | Permanecer na lista; cancelar busca/edição quando abertas |
+| **Ctrl+C** | Encaminhar ao comportamento nativo de saída do Codex |
 | **Digitar ou colar texto** | Encerrar o posicionamento e encaminhar a entrada ao Codex |
 
-**F9** é configurado somente na execução pelo NotDex, por meio de `tui.keymap.global.open_agents`; o arquivo de atalhos do usuário é preservado. Se F9 já aparece num atalho explícito do perfil, projeto ou argumentos `-c`, o NotDex preserva essa configuração e mostra `/agents` no rodapé. Argumentos `-c` explícitos do usuário têm precedência. Ao navegar com F9 gerenciado pelo NotDex, o painel cede espaço ao command center. Enter/Esc devolvem a apresentação; F12 também revela o painel. A suspensão é temporária e não altera a visibilidade salva.
+**F9** é configurado somente na execução pelo NotDex, por meio de `tui.keymap.global.open_agents`; o arquivo de atalhos do usuário é preservado. Se F9 já aparece num atalho explícito do perfil, projeto ou argumentos `-c`, o NotDex preserva essa configuração e mostra `/agents` no rodapé. Argumentos `-c` explícitos do usuário têm precedência. O painel cede espaço ao command center e retorna quando o chat reaparece. F12 também revela o painel. A suspensão é temporária e não altera a visibilidade salva. Com rascunho ou turno em andamento, Esc mantém a função nativa de cancelar/interromper.
+
+Mensagens enviadas pelo usuário aparecem em negrito, sem faixa de fundo. Quando o terminal fornece as cores reais de texto e fundo por OSC 10/11, o NotDex escolhe uma cor diferente com contraste mínimo de 4,5:1. Essas consultas somente leem cores e não alteram o tema. Sem resposta confiável, usa a cor padrão do terminal em negrito; isso inclui o ConPTY Windows testado nesta versão. `NO_COLOR` desativa a cor adicional. Cores explícitas de trechos da mensagem permanecem, exceto o branco de texto padrão materializado pelo ConPTY.
+
+A detecção de mensagens e telas usa os marcadores visuais do Codex **0.167.0**. Telas desconhecidas mantêm a navegação original. Mudanças futuras no layout podem exigir uma atualização do NotDex.
 
 A troca de sessão limpa as métricas anteriores. A identificação vem dos eventos do Codex ou de um `codex resume ID` explícito; o NotDex não escolhe a conversa mais recente do disco. Quando o Codex não entrega `SessionStart` porque o MCP ainda está iniciando, os tokens aguardam o próximo evento de envio/conclusão. `Aguardando identificacao da sessao` indica esse estado. Ao trocar de chat por outra entrada nativa, como `/agents`, a vinculação depende do evento do Codex. Compactação automática não muda a seleção do painel.
 
